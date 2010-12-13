@@ -1,0 +1,215 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 42;
+	objects = {
+
+/* Begin PBXFileReference section */
+		10294C5011A1A01400AAF551 /* fastrack.cu */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cuda; path = fastrack.cu; sourceTree = "<group>"; };
+		10294C5111A1A01400AAF551 /* fastrack.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = fastrack.h; sourceTree = "<group>"; };
+		10294D4211A1B49500AAF551 /* profile_config */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = profile_config; sourceTree = "<group>"; };
+		10294DA311A1B99300AAF551 /* fastrack_profile_log.csv */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = fastrack_profile_log.csv; sourceTree = "<group>"; };
+		103C8AE712B686D100FE2066 /* helpers.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = helpers.h; sourceTree = "<group>"; };
+		103C8AE812B686D100FE2066 /* helpers.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = helpers.c; sourceTree = "<group>"; };
+		103C8AE912B6877200FE2066 /* main.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = main.h; sourceTree = "<group>"; };
+		103C8B5C12B6ADE500FE2066 /* rand_utils.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = rand_utils.c; sourceTree = "<group>"; };
+		103C8B5D12B6ADE500FE2066 /* rand_utils.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = rand_utils.h; sourceTree = "<group>"; };
+		106FF7F5119EE68B000CD6C8 /* Makefile */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.make; path = Makefile; sourceTree = "<group>"; };
+		106FF80D119EE7F5000CD6C8 /* main.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = main.c; sourceTree = "<group>"; };
+		106FF828119EEF51000CD6C8 /* cuda_utils.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = cuda_utils.h; sourceTree = "<group>"; };
+		106FF829119EEF51000CD6C8 /* cuda_utils.cu */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cuda; path = cuda_utils.cu; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		10294D9B11A1B93300AAF551 /* source */ = {
+			isa = PBXGroup;
+			children = (
+				103C8AE912B6877200FE2066 /* main.h */,
+				106FF80D119EE7F5000CD6C8 /* main.c */,
+				10294C5111A1A01400AAF551 /* fastrack.h */,
+				10294C5011A1A01400AAF551 /* fastrack.cu */,
+			);
+			name = source;
+			sourceTree = "<group>";
+		};
+		10294D9C11A1B93D00AAF551 /* other */ = {
+			isa = PBXGroup;
+			children = (
+				106FF7F5119EE68B000CD6C8 /* Makefile */,
+				10294D4211A1B49500AAF551 /* profile_config */,
+				10294DA311A1B99300AAF551 /* fastrack_profile_log.csv */,
+			);
+			name = other;
+			sourceTree = "<group>";
+		};
+		103C8AEA12B687C200FE2066 /* utilities */ = {
+			isa = PBXGroup;
+			children = (
+				103C8B5D12B6ADE500FE2066 /* rand_utils.h */,
+				103C8B5C12B6ADE500FE2066 /* rand_utils.c */,
+				106FF828119EEF51000CD6C8 /* cuda_utils.h */,
+				106FF829119EEF51000CD6C8 /* cuda_utils.cu */,
+				103C8AE712B686D100FE2066 /* helpers.h */,
+				103C8AE812B686D100FE2066 /* helpers.c */,
+			);
+			name = utilities;
+			sourceTree = "<group>";
+		};
+		106FF7E9119EE654000CD6C8 = {
+			isa = PBXGroup;
+			children = (
+				103C8AEA12B687C200FE2066 /* utilities */,
+				10294D9B11A1B93300AAF551 /* source */,
+				10294D9C11A1B93D00AAF551 /* other */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXLegacyTarget section */
+		10294CDE11A1AF0E00AAF551 /* fastrackdebug */ = {
+			isa = PBXLegacyTarget;
+			buildArgumentsString = "$(ACTION) --debug";
+			buildConfigurationList = 10294CDF11A1AF0E00AAF551 /* Build configuration list for PBXLegacyTarget "fastrackdebug" */;
+			buildPhases = (
+			);
+			buildToolPath = /usr/bin/make;
+			buildWorkingDirectory = "";
+			dependencies = (
+			);
+			name = fastrackdebug;
+			passBuildSettingsInEnvironment = 1;
+			productName = cuda_skeleton;
+		};
+		106FF818119EEEB0000CD6C8 /* fastrack */ = {
+			isa = PBXLegacyTarget;
+			buildArgumentsString = "$(ACTION) ";
+			buildConfigurationList = 106FF821119EEEC1000CD6C8 /* Build configuration list for PBXLegacyTarget "fastrack" */;
+			buildPhases = (
+			);
+			buildToolPath = /usr/bin/make;
+			buildWorkingDirectory = "";
+			dependencies = (
+			);
+			name = fastrack;
+			passBuildSettingsInEnvironment = 1;
+			productName = cuda_skeleton;
+		};
+/* End PBXLegacyTarget section */
+
+/* Begin PBXProject section */
+		106FF7EB119EE654000CD6C8 /* Project object */ = {
+			isa = PBXProject;
+			buildConfigurationList = 106FF7EE119EE654000CD6C8 /* Build configuration list for PBXProject "fastrack" */;
+			compatibilityVersion = "Xcode 2.4";
+			developmentRegion = English;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				English,
+				Japanese,
+				French,
+				German,
+			);
+			mainGroup = 106FF7E9119EE654000CD6C8;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				106FF818119EEEB0000CD6C8 /* fastrack */,
+				10294CDE11A1AF0E00AAF551 /* fastrackdebug */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin XCBuildConfiguration section */
+		10294CE011A1AF0E00AAF551 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COPY_PHASE_STRIP = NO;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				PRODUCT_NAME = fastrack;
+			};
+			name = Debug;
+		};
+		10294CE111A1AF0E00AAF551 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COPY_PHASE_STRIP = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				GCC_ENABLE_FIX_AND_CONTINUE = NO;
+				PRODUCT_NAME = fastrack;
+				ZERO_LINK = NO;
+			};
+			name = Release;
+		};
+		106FF7EC119EE654000CD6C8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COPY_PHASE_STRIP = NO;
+			};
+			name = Debug;
+		};
+		106FF7ED119EE654000CD6C8 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COPY_PHASE_STRIP = YES;
+			};
+			name = Release;
+		};
+		106FF819119EEEB0000CD6C8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COPY_PHASE_STRIP = NO;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				PRODUCT_NAME = fastrack;
+			};
+			name = Debug;
+		};
+		106FF81A119EEEB0000CD6C8 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COPY_PHASE_STRIP = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				GCC_ENABLE_FIX_AND_CONTINUE = NO;
+				PRODUCT_NAME = fastrack;
+				ZERO_LINK = NO;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		10294CDF11A1AF0E00AAF551 /* Build configuration list for PBXLegacyTarget "fastrackdebug" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				10294CE011A1AF0E00AAF551 /* Debug */,
+				10294CE111A1AF0E00AAF551 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		106FF7EE119EE654000CD6C8 /* Build configuration list for PBXProject "fastrack" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				106FF7EC119EE654000CD6C8 /* Debug */,
+				106FF7ED119EE654000CD6C8 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		106FF821119EEEC1000CD6C8 /* Build configuration list for PBXLegacyTarget "fastrack" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				106FF819119EEEB0000CD6C8 /* Debug */,
+				106FF81A119EEEB0000CD6C8 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 106FF7EB119EE654000CD6C8 /* Project object */;
+}

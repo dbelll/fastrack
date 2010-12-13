@@ -1,0 +1,34 @@
+timestamp
+gridsize
+threadblocksize
+dynsmemperblock
+stasmemperblock
+regperthread
+
+
+#branch
+#divergent_branch
+
+#counters (up to 4 can be used)
+#local_load
+#local_store
+#gld_request
+#gls_request
+#gld_incoherent
+#gld_coherent
+#gst_incoherent
+#gst_coherent
+sm_cta_launched
+
+warp_serialize
+
+# profiler triggers are are incremented by using __prof_trigger(n) in kernel code
+#prof_trigger_00
+#prof_trigger_01
+#prof_trigger_02
+#prof_trigger_03
+#prof_trigger_04
+#prof_trigger_05
+#prof_trigger_06
+#prof_trigger_07
+

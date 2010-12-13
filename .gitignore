@@ -1,0 +1,35 @@
+# xcode noise
+*.pch
+build
+*.pbxuser
+*.mode1v3
+
+# emacs debris
+*~
+\#*#
+
+# osx noise
+.DS_Store
+profile
+
+# others
+*.numbers
+*.pages
+*.orig
+
+#cuda symlinks and build diretories
+lib
+common
+bin
+obj
+tmp
+
+# don't include the profiling output
+*.csv
+
+# other junk
+junk*
+home_junk
+homejunk
+res_junk
+testing.outerr.*
