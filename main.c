@@ -157,14 +157,8 @@ int main(int argc, const char **argv)
 	
 	if (resultsCPU) dumpResults(resultsCPU);
 	if (resultsGPU) dumpResults(resultsGPU);
-	
-	unsigned state[4];
-	state[3] = 4278190080u;
-	state[2] = 0;
-	state[1] = 0;
-	state[0] = 255;
-	
-	dump_state(start_state());
+		
+//	dump_state(start_state());
 	
 	return 0;
 }

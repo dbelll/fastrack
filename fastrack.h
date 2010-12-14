@@ -8,6 +8,11 @@
 
 #define MAX_BOARD_DIMENSION 8	// maximum value for width or length of board
 
+#define MOVES_KNIGHT {{1, 2}, {2, 1}, {2, -1}, {1, -2}, {-1, -2}, {-2, -1}, {-2, 1}, {-1, 2}}
+#define MOVES_ONE_MULTI {{0, 1}, {1, 1}, {1, 0}, {1, -1}, {0, -1}, {-1, -1}, {-1, 0}, {-1, 1}}
+#define MOVES_TWO_DIAG {{1, 1}, {2, 2}, {1, -1}, {2, -2}, {-1, -1}, {-2, -2}, {-1, 1}, {-2, 2}}
+#define MOVES_JUMP_DIAG {{0, 1}, {2, 2}, {1, 0}, {2, -2}, {0, -1}, {-2, -2}, {-1, 0}, {-2, 2}}
+#define MOVES_JUMP_ORTHO {{0, 2}, {1, 1}, {2, 0}, {1, -1}, {0, -2}, {-1, -1}, {-2, 0}, {-1, 1}}
 
 // PARAMS structure is a convenient place to hold all dynamic parameters
 typedef struct {
@@ -42,10 +47,8 @@ typedef struct {
 	unsigned board_bits;		// = board_size, bits needed to encode one player's position
 	unsigned board_ints;		// 1 + (board_bits-1) / 32
 								//    = unsigned ints needed to encode one player's position
-	unsigned board_used;		// number of lo-order bits used from each int = board-bits / board_ints
-	unsigned board_unused;		// hi-order bits not used = 32 - board_used
-//	unsigned state_bits;		// 2*board_size = number of bits needed to encode a state
-//								//  = one bit for each square for each player
+	unsigned board_unused;		// hi-order bits not used in the highest int in teh board 
+								//		= 32 * board_ints - board_bits
 	unsigned state_size;		// 2 * board_ints
 								//  = number of unsigned ints used to encode a state
 	unsigned num_inputs;		// number of input nodes in nn = state_bits
@@ -104,6 +107,7 @@ void freeResults(RESULTS *r);
 
 unsigned *start_state();
 void dump_state(unsigned *state);
+void dump_board(unsigned *board);
 
 RESULTS *runCPU(AGENT *ag);
 RESULTS *runGPU(AGENT *ag);
