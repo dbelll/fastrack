@@ -89,7 +89,7 @@ float val_for_state(float *wgts, int *state, float *hidden)
 		
 		// next, loop over all bits in the state, and add in their contribution
 		unsigned iWgt = g_p.num_hidden;	// index into wgts for idx = 0
-		for (int i = 0; i < g_p.state_ints; i++) {
+		for (int i = 0; i < g_p.state_size; i++) {
 			unsigned s = state[i];
 			while (s) {
 				if (s & 1) hidden[iHidden] += wgts[iHidden + iWgt];
@@ -110,16 +110,50 @@ float val_for_state(float *wgts, int *state, float *hidden)
 	return sigmoid(out);
 }
 
+unsigned int_for_cell(unsigned row, unsigned col)
+{
+	return (col + row * g_p.board_width) / 32;
+}
+
+unsigned bit_for_cell(unsigned row, unsigned col)
+{
+	return (col + row * g_p.board_width) % 32;
+}
+
+unsigned val_for_cell(unsigned row, unsigned col, unsigned *state)
+{
+	return state[int_for_cell(row, col)] & (1 << (bit_for_cell(row, col)));
+}
+
+void set_val_for_cell(unsigned row, unsigned col, unsigned *state, unsigned val)
+{
+	if (val) {
+		state[int_for_cell(row, col)] |= (1 << (bit_for_cell(row, col)));
+	}else {
+		state[int_for_cell(row, col)] &= ~(1 << (bit_for_cell(row, col)));
+	}
+}
+
+char char_for_cell(unsigned row, unsigned col, unsigned *state)
+{
+	unsigned s0 = val_for_cell(row, col, state);
+	unsigned s1 = val_for_cell(row, col, state + g_p.board_ints);
+	if (s0 && s1) return '?';
+	else if (s0) return 'X';
+	else if (s1) return 'O';
+	return '.';
+}
+
 // return a pointer to the starting state for the game
 unsigned *start_state()
 {
 	static unsigned *ss = NULL;
 	if (ss == NULL) {
-		ss = (unsigned *)calloc(g_p.state_ints, sizeof(unsigned));
-		unsigned first_row = (1 << g_p.board_width)-1;
-		unsigned last_row = first_row << (32 - g_p.board_width);
-		ss[0] = first_row;
-		ss[g_p.state_ints-1] |= last_row;
+		ss = (unsigned *)calloc(g_p.state_size, sizeof(unsigned));
+		for (int col = 0; col < g_p.board_width; col++) {
+			set_val_for_cell(0, col, ss, 1);
+			set_val_for_cell(g_p.board_height-1, col, ss + g_p.board_ints, 1); 
+		}
 	}
 	return ss;
 }
@@ -128,10 +162,10 @@ unsigned *start_state()
 #pragma mark dump stuff
 
 // Calculate the row value, from the given state for the specified player
-unsigned rowbits(unsigned *state, unsigned player, unsigned row)
+unsigned rowbits(unsigned *state, unsigned player, unsigned col)
 {
 //	printf("rowbits for player %u, row %u\n", player, row);
-	unsigned row_bit = player * g_p.board_size + row * g_p.board_width;
+	unsigned row_bit = player * g_p.board_size + col * g_p.board_width;
 //	printf("row_bit is %u\n", row_bit);
 	unsigned iState = row_bit / 32;
 	unsigned iRowStart = row_bit % 32;
@@ -158,35 +192,12 @@ void dump_state(unsigned *state)
 {
 //	printf("dump_state for %u %u %u %u\n", state[3], state[2], state[1], state[0]);
 	dump_col_header(3, g_p.board_width);
-	for (int r = g_p.board_height - 1; r >= 0; r--) {
-		printf("%2u ", r+1);
-//		printf("row %d\n", r);
-		unsigned s0 = rowbits(state, 0, r);
-		unsigned s1 = rowbits(state, 1, r);
-//		printf("player 0 row bits is %d\n", s0);
-//		printf("player 1 row bits is %d\n", s1);
-		unsigned count = 0;
-		while (s0 || s1) {
-//			printf("s0 = %u  s1 = %u\n", s0, s1);
-			if ((s0 & 1) && (s1 & 1)) {
-				printf("***ERROR*** inconsistent board\n");
-				exit(-1);
-			}
-			if (s0 & 1) {
-				printf(" X");
-			}else if (s1 & 1) {
-				printf(" O");
-			}else {
-				printf(" .");
-			}
-			s0 >>= 1;
-			s1 >>= 1;
-			count += 1;
+	for (int row = g_p.board_height - 1; row >= 0; row--) {
+		printf("%2u ", row+1);
+		for (int col = 0; col < g_p.board_width; col++) {
+			printf(" %c", char_for_cell(row, col, state));
 		}
-		while (count++ < g_p.board_width) {
-			printf(" .");
-		}
-		printf("%3u", r+1);
+		printf("%3u", row+1);
 		printf("\n");
 	}
 	dump_col_header(3, g_p.board_width);
@@ -269,13 +280,13 @@ void dump_compact_agent(COMPACT_AGENT *ag)
 }
 
 
-void dumpResults(RESULTS *r)
+void dumpResults(RESULTS *row)
 {
 	printf("Best agents each round...\n");
-	for (int i = 0; i < r->allocated; i++) {
-		if (r->best+i){
+	for (int i = 0; i < row->allocated; i++) {
+		if (row->best+i){
 			printf("[ROUND%3d]\n", i);
-			dump_compact_agent(r->best+i);
+			dump_compact_agent(row->best+i);
 		}
 	}
 }
@@ -287,19 +298,19 @@ void dumpResults(RESULTS *r)
 #pragma mark CPU - Only
 RESULTS *newResults()
 {
-	RESULTS *r = (RESULTS *)malloc(sizeof(RESULTS));
-	r->allocated = g_p.num_episodes;
-	r->best = (COMPACT_AGENT *)malloc(r->allocated * sizeof(COMPACT_AGENT));
-	return r;
+	RESULTS *row = (RESULTS *)malloc(sizeof(RESULTS));
+	row->allocated = g_p.num_episodes;
+	row->best = (COMPACT_AGENT *)malloc(row->allocated * sizeof(COMPACT_AGENT));
+	return row;
 }
 
-void freeResults(RESULTS *r)
+void freeResults(RESULTS *row)
 {
-	if (r) {
-		for (int i = 0; i < r->allocated; i++)
-			if (r->best + i) freeCompactAgent(r->best+i);
+	if (row) {
+		for (int i = 0; i < row->allocated; i++)
+			if (row->best + i) freeCompactAgent(row->best+i);
 	
-		free(r);
+		free(row);
 	}
 }
 

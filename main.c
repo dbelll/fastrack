@@ -48,8 +48,10 @@ void dump_params(PARAMS p)
 	printf("game parameters:\n");
 	printf("   seed         %10d\n", p.seed);
 	printf("   board          (%3d x%3d)\n", p.board_width, p.board_height);
-	printf("   state_bits      %7d\n", p.state_bits);
-	printf("   state_ints      %7d\n", p.state_ints);
+	printf("   board_bits      %7d\n", p.board_bits);
+	printf("   board_ints      %7d\n", p.board_ints);
+	printf("   board_unused    %7d\n", p.board_unused);
+	printf("   state_size      %7d\n", p.state_size);
 	printf("agent parameters:\n");
 	printf("   num_inputs      %7d\n", p.num_inputs);
 	printf("   num_hidden      %7d\n", p.num_hidden);
@@ -112,9 +114,13 @@ PARAMS read_params(int argc, const char **argv)
 		exit(-1);
 	}
 	
-	p.state_bits = 2 * p.board_size;
-	p.state_ints = 1 + (p.state_bits - 1)/(8 * sizeof(unsigned));
-	p.num_inputs = p.state_bits;
+	p.board_bits = p.board_size;
+	p.board_ints = 1 + (p.board_bits - 1)/(8 * sizeof(unsigned));
+	p.board_unused = 32*p.board_ints - p.board_bits;
+	p.state_size = 2 * p.board_ints;
+//	p.state_bits = 2 * p.board_size;
+//	p.state_ints = 1 + (p.state_bits - 1)/(8 * sizeof(unsigned));
+	p.num_inputs = 2 * p.board_bits;
 	p.alloc_wgts = p.num_hidden * (2 * p.board_size + 3);
 	p.agent_float_count = (2*p.alloc_wgts + 3);
 	
