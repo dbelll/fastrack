@@ -14,6 +14,9 @@
 #define MOVES_JUMP_DIAG {{0, 1}, {2, 2}, {1, 0}, {2, -2}, {0, -1}, {-2, -2}, {-1, 0}, {-2, 2}}
 #define MOVES_JUMP_ORTHO {{0, 2}, {1, 1}, {2, 0}, {1, -1}, {0, -2}, {-1, -1}, {-2, 0}, {-1, 1}}
 
+#define MAX_STATE_SIZE 4
+#define MAX_BOARD_INTS 2
+
 // PARAMS structure is a convenient place to hold all dynamic parameters
 typedef struct {
 	// game parameters
@@ -64,9 +67,10 @@ typedef struct {
 // AGENT structure is used to consolidate the pointers to all agent data.  Pointers may be
 // all host pointers or all device pointers.
 typedef struct{
-	unsigned *seeds;		// random number seeds for each agent (num_agents * 4)
+	unsigned *state;	// state (num_agents * g_p.state_size)
+	unsigned *seeds;	// random number seeds for each agent (num_agents * 4)
 	float *wgts;		// nn wgts for each agent (num_agents * alloc_wgts)
-	float *W;			// sum of lambda * gradient for each weight (num_agents * alloc_wgts)
+	float *e;			// eligibility trace
 	float *alpha;		// agent-specific alpha value (num_agents)
 	float *epsilon;		// agent-specific epsilon value (num_agents)
 	float *lambda;		// agent-specific lambda value (num_agents)
@@ -78,7 +82,7 @@ typedef struct {
 	float *fdata;		// pointer to all float values
 	unsigned num_wgts;	// number of weights (and of W)
 	unsigned iWgts;		// index in fData to beginning of wgts
-	unsigned iW;		// index in fData to beginning of @
+	unsigned iE;		// index in fData to beginning of eligibility trace
 	unsigned iAlpha;	// index in fData to alpha
 	unsigned iEpsilon;	// index in fData to epsilon
 	unsigned iLambda;	// index in fData to lambda

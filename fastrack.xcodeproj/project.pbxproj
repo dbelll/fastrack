@@ -16,6 +16,9 @@
 		103C8AE912B6877200FE2066 /* main.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = main.h; sourceTree = "<group>"; };
 		103C8B5C12B6ADE500FE2066 /* rand_utils.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = rand_utils.c; sourceTree = "<group>"; };
 		103C8B5D12B6ADE500FE2066 /* rand_utils.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = rand_utils.h; sourceTree = "<group>"; };
+		103C8DA512B8197100FE2066 /* junk */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = junk; sourceTree = "<group>"; };
+		103C8DC712B821A800FE2066 /* wgts.csv */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = wgts.csv; sourceTree = "<group>"; };
+		103C8E3A12B8D51900FE2066 /* notes.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = notes.txt; sourceTree = "<group>"; };
 		106FF7F5119EE68B000CD6C8 /* Makefile */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.make; path = Makefile; sourceTree = "<group>"; };
 		106FF80D119EE7F5000CD6C8 /* main.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = main.c; sourceTree = "<group>"; };
 		106FF828119EEF51000CD6C8 /* cuda_utils.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = cuda_utils.h; sourceTree = "<group>"; };
@@ -57,9 +60,20 @@
 			name = utilities;
 			sourceTree = "<group>";
 		};
+		103C8E3212B8D33800FE2066 /* notes and results */ = {
+			isa = PBXGroup;
+			children = (
+				103C8DA512B8197100FE2066 /* junk */,
+				103C8DC712B821A800FE2066 /* wgts.csv */,
+				103C8E3A12B8D51900FE2066 /* notes.txt */,
+			);
+			name = "notes and results";
+			sourceTree = "<group>";
+		};
 		106FF7E9119EE654000CD6C8 = {
 			isa = PBXGroup;
 			children = (
+				103C8E3212B8D33800FE2066 /* notes and results */,
 				103C8AEA12B687C200FE2066 /* utilities */,
 				10294D9B11A1B93300AAF551 /* source */,
 				10294D9C11A1B93D00AAF551 /* other */,
