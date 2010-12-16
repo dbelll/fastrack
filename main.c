@@ -48,14 +48,12 @@ void dump_params(PARAMS p)
 	printf("game parameters:\n");
 	printf("   seed         %10d\n", p.seed);
 	printf("   board          (%3d x%3d)\n", p.board_width, p.board_height);
-	printf("   board_bits      %7d\n", p.board_bits);
-	printf("   board_ints      %7d\n", p.board_ints);
-	printf("   board_unused    %7d\n", p.board_unused);
+	printf("   board_size      %7d\n", p.board_size);
 	printf("   state_size      %7d\n", p.state_size);
 	printf("agent parameters:\n");
-	printf("   num_inputs      %7d\n", p.num_inputs);
 	printf("   num_hidden      %7d\n", p.num_hidden);
-	printf("   alloc_wgts      %7d\n", p.alloc_wgts);
+	printf("   num_wgts		   %7d\n", p.num_wgts);
+	printf("   num_agent_floats %7d\n", p.num_agent_floats);
 	printf("   init_wgt_min    %7.4f\n", p.init_wgt_min);
 	printf("   init_wgt_max    %7.4f\n", p.init_wgt_max);
 	printf("learning parameters:\n");
@@ -86,9 +84,8 @@ PARAMS read_params(int argc, const char **argv)
 	if (p.board_width > MAX_BOARD_DIMENSION || p.board_height > MAX_BOARD_DIMENSION) {
 		printf("***ERROR*** Board size (%d x %d) exceeds maximum allowable dimensions\n", p.board_width, p.board_height); exit(-1);
 	}
-	p.board_size = p.board_width * p.board_height;
-	p.lg_bw = log2ui(p.board_width);
-	p.lg_bh = log2ui(p.board_height);
+	p.board_size = p.board_width * p.board_height;	// number of cells on the board
+	p.state_size = 2 * p.board_size;
 	
 	p.seed = GET_PARAM("SEED", 1000);
 	p.num_hidden = GET_PARAM("NUM_HIDDEN", 32);
@@ -102,7 +99,6 @@ PARAMS read_params(int argc, const char **argv)
 	p.lambda = GET_PARAMF("LAMBDA", .50f);
 	
 	p.num_agents = GET_PARAM("NUM_AGENTS", 64);
-	p.lg_ag = log2ui(p.num_agents);
 	
 	p.episode_length = GET_PARAM("EPISODE_LENGTH", 256);
 	p.num_episodes = GET_PARAM("EPISODE_LENGTH", 16);
@@ -114,15 +110,9 @@ PARAMS read_params(int argc, const char **argv)
 		exit(-1);
 	}
 	
-	p.board_bits = p.board_size;
-	p.board_ints = 1 + (p.board_bits - 1)/(8 * sizeof(unsigned));
-	p.board_unused = 32*p.board_ints - p.board_bits;
-	p.state_size = 2 * p.board_ints;
-//	p.state_bits = 2 * p.board_size;
-//	p.state_ints = 1 + (p.state_bits - 1)/(8 * sizeof(unsigned));
-	p.num_inputs = 2 * p.board_bits;
-	p.alloc_wgts = p.num_hidden * (2 * p.board_size + 3);
-	p.agent_float_count = (2*p.alloc_wgts + 3);
+	p.num_wgts = p.num_hidden * (2 * p.board_size + 3);	// number of weights for one agent
+	p.num_agent_floats = (2*p.num_wgts + 3);	// total number of float values for an agent
+												// (wgts, e, alpha, epsilon, lambda)
 	
 	printf("[FASTRACK][BOARD_SIZE %06d][SEED%10d][NUM_HIDDEN%4d][INIT_WGT_MIN%7.4f][INIT_WGT_MAX%7.4f][ALPHA%7.4f][EPSILON%7.4f][GAMMA%7.4f][LAMBDA%7.4f][NUM_AGENTS%7d][EPISODE_LENGTH%7d][NUM_EPISODES%7d]\n", 1000*p.board_width + p.board_height, p.seed, p.num_hidden, p.init_wgt_min, p.init_wgt_max, p.alpha, p.epsilon, p.gamma, p.lambda, p.num_agents, p.episode_length, p.num_episodes);
 

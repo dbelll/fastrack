@@ -22,10 +22,17 @@ static PARAMS g_p;
 // {0, 0} is an allowable move, meaning no piece is moved (ie 'pass')
 //static int g_allowable_moves[8][2] = {{-1, 2}, {1, 2}, {2, 1}, {2, -1}, {1, -2}, {-1, -2}, {-2, -1}, {-2, 1}};
 static int g_allowable_moves[8][2] = MOVES_KNIGHT;
-static unsigned *g_moves = NULL;
+
+// g_moves will be the move array of size board_size * 8 (for up to 8 possible moves from each cell)
+// The values stored is the cell number where the piece would be after the move.  The board_size rows
+// in the table are for all the possible starting cell numbers.  A move of -1 is not valid
+static int *g_moves = NULL;
+
+static unsigned *g_start_state = NULL;
+
 //static unsigned *g_moves_op = NULL; // used if there is directional difference to possible moves
 
-static unsigned g_bits_for_board_ints[2];	// stores the number of valid bits in each int that makes up a board
+//static unsigned g_bits_for_board_ints[2];	// stores the number of valid bits in each int that makes up a board
 
 #pragma mark -
 #pragma mark misc.
@@ -46,6 +53,12 @@ float sigmoid(float x)
 	return 1.0f/(1.0f + expf(-x));
 }
 
+unsigned index4rc(unsigned row, unsigned col)
+{
+	return row * g_p.board_width + col;
+}
+
+
 #pragma mark -
 #pragma mark allocating and freeing
 
@@ -65,7 +78,6 @@ void freeAgentGPU(AGENT *ag)
 void freeAgentCPU(AGENT *ag)
 {
 	if (ag) {
-		if (ag->state) free(ag->state);
 		if (ag->seeds) free(ag->seeds);
 		if (ag->wgts) free(ag->wgts);
 		if (ag->e) free(ag->e);
@@ -91,105 +103,87 @@ void freeCompactAgent(COMPACT_AGENT *ag)
 
 // Calcualte the value for a state s using the specified weights,
 // storing hidden activation in the specified location and returning the output value
-float val_for_state(float *wgts, unsigned *state, float *hidden)
+float val_for_state(float *wgts, unsigned *state, float *hidden, float *out)
 {
 //	printf("calculating value for state...\n");
-	float out = 0.0f;
+	out[0] = 0.0f;
 	
 	for (unsigned iHidden = 0; iHidden < g_p.num_hidden; iHidden++) {
 		// first add in the bias
 		hidden[iHidden] = -1.0f * wgts[iHidden];
-		
-		// next, loop over all bits in the state, and add in their contribution
-		unsigned iWgt = g_p.num_hidden;	// index into wgts for idx = 0
-		for (int i = 0; i < g_p.state_size; i++) {
-			unsigned bitMax = (0 == (i % g_p.board_ints)) ? ((g_p.board_size > 32) ? 32 : g_p.board_size)
-															: (g_p.board_size - 32);
-			unsigned s = state[i];
-//			printf("state[%d] is %u\n", i, s);
-			unsigned iBit = 0;
-			while (iBit < bitMax) {
-				if (s & 1) hidden[iHidden] += wgts[iHidden + iWgt];
-//				if (s & 1) printf("bit %d of byte %d is on!  adding %9.4f to hidden node %d (now = %9.4f)\n", iBit, i, wgts[iHidden + iWgt], iHidden, hidden[iHidden]);
-				s >>= 1;
-				iBit++;
-				iWgt += g_p.num_hidden;
+
+		// next loop update for all the input nodes
+		for (int i = 0; i < g_p.board_size * 2; i++) {
+			if (state[i]) {
+				hidden[iHidden] += wgts[iHidden + g_p.num_hidden * (1 + i)];
 			}
 		}
-//		printf("input to hidden[%d] = %9.4f", iHidden, hidden[iHidden]);
-		// next, apply the activation function
+		
+		// apply the sigmoid function
 		hidden[iHidden] = sigmoid(hidden[iHidden]);
-//		printf("after sigmoid applied its %9.4f\n", hidden[iHidden]);
-		// now add this hidden node's contribution to the output
-		out += hidden[iHidden] * wgts[iHidden + iWgt];
+
+		// accumulate into the output
+		out[0] += hidden[iHidden] * wgts[iHidden + g_p.num_hidden * (1 + g_p.board_size * 2)];
 	}
 	
 	// finally, add the bias to the output value and apply the sigmoid function
-	out += -1.0f * wgts[g_p.alloc_wgts - g_p.num_hidden];
-//	printf("input to output node is %9.4f, %9.4f after sigmoid\n", out, sigmoid(out));
-	return sigmoid(out);
+	out[0] += -1.0f * wgts[g_p.num_wgts - g_p.num_hidden];
+	out[0] = sigmoid(out[0]);
+	return out[0];
 }
 
-unsigned int_for_cell(unsigned row, unsigned col)
-{
-	return (col + row * g_p.board_width) / 32;
-}
-
-unsigned bit_for_cell(unsigned row, unsigned col)
-{
-	return (col + row * g_p.board_width) % 32;
-}
+//unsigned int_for_cell(unsigned row, unsigned col)
+//{
+//	return (col + row * g_p.board_width) / 32;
+//}
+//
+//unsigned bit_for_cell(unsigned row, unsigned col)
+//{
+//	return (col + row * g_p.board_width) % 32;
+//}
 
 unsigned val_for_cell(unsigned row, unsigned col, unsigned *board)
 {
-	return board[int_for_cell(row, col)] & (1 << (bit_for_cell(row, col)));
+	return board[index4rc(row, col)];
 }
 
 void set_val_for_cell(unsigned row, unsigned col, unsigned *board, unsigned val)
 {
-	if (val) {
-		board[int_for_cell(row, col)] |= (1 << (bit_for_cell(row, col)));
-	}else {
-		board[int_for_cell(row, col)] &= ~(1 << (bit_for_cell(row, col)));
-	}
+	board[index4rc(row, col)] = val;
 }
 
-char char_for_cell(unsigned row, unsigned col, unsigned *state)
+char char_for_index(unsigned i, unsigned *state)
 {
-	unsigned s0 = val_for_cell(row, col, state);
-	unsigned s1 = val_for_cell(row, col, state + g_p.board_ints);
+	unsigned s0 = X_BOARD(state)[i];
+	unsigned s1 = O_BOARD(state)[i];
 	if (s0 && s1) return '?';
 	else if (s0) return 'X';
 	else if (s1) return 'O';
 	return '.';
 }
 
+char char_for_cell(unsigned row, unsigned col, unsigned *state)
+{
+	return char_for_index(index4rc(row, col), state);
+}
+
 // add n pieces to un-occupied cells of a board
 void random_add(unsigned *board, unsigned n)
 {
-//	printf("random_add %d pieces\n", n);
 	while (n > 0) {
-//		printf("%d pieces left to add to board\n", n);
-		unsigned i = rand() % g_p.board_bits;
-//		printf("   i is %d\n", i);
-		unsigned iBitMask = 1 << (i & 31);	// mod 32
-//		printf("   iBitMask is %u\n", iBitMask);
-		unsigned iInt = i >> 5;	// divided by 32
-//		printf("   iInt is %d\n", iInt);
-		if (!(board[iInt] & iBitMask)) {
-			board[iInt] |= iBitMask;
+		unsigned i = rand() % g_p.board_size;
+		if (!board[i]) {
+			board[i] = 1;
 			--n;
 		}
-//		dump_board(board);
 	}
 }
 
 // generate a random board
 void random_board(unsigned *board, unsigned n)
 {
-	printf("random_board for %d pieces\n", n);
 	// first, empty the board
-	for (int i = 0; i < g_p.board_ints; i++) board[i] = 0;
+	for (int i = 0; i < g_p.board_size; i++) board[i] = 0;
 	
 	// now add a random, non-occupied cell
 	random_add(board, n);
@@ -200,192 +194,179 @@ void random_board(unsigned *board, unsigned n)
 void random_board_masked(unsigned *board, unsigned *mask, unsigned n)
 {
 	// first, copy the mask to the board
-	for (int i = 0; i < g_p.board_ints; i++) board[i] = mask[i];
+	for (int i = 0; i < g_p.board_size; i++) board[i] = mask[i];
 
 	// now add a random, non-occupied cell
 	random_add(board, n);
 	
 	// XOR away the mask
-	for (int i = 0; i < g_p.board_ints; i++) board[i] ^= mask[i];
+	for (int i = 0; i < g_p.board_size; i++) board[i] ^= mask[i];
 }
 
 // generate a random state with n pieces for ech player
 void random_state(unsigned *state, unsigned n)
 {
-	random_board(state, n);
-	random_board_masked(state + g_p.board_ints, state, n);
+	random_board(X_BOARD(state), n);
+	random_board_masked(O_BOARD(state), X_BOARD(state), n);
 }
 
 // return a read-only mask for the specified number of cols on the right
-unsigned *mask_cols_right(unsigned cols)
-{
-	static unsigned need_init = 1;
-	static unsigned *mask;
-	if (need_init) {
-		mask = (unsigned *)calloc(g_p.board_ints * (g_p.board_width-1), sizeof(unsigned));
-		for (int delta = 1; delta < g_p.board_width; delta++) {
-			for (int col = g_p.board_width - delta; col < g_p.board_width; col++) {
-				for (int row = 0; row < g_p.board_height; row++) {
-					set_val_for_cell(row, col, mask + (delta-1)*g_p.board_ints, 1);
-				}
-			}
-		}
-	}
-	return mask + (cols-1)*g_p.board_ints;
-}
-
+//unsigned *mask_cols_right(unsigned cols)
+//{
+//	static unsigned need_init = 1;
+//	static unsigned *mask;
+//	if (need_init) {
+//		mask = (unsigned *)calloc(g_p.board_ints * (g_p.board_width-1), sizeof(unsigned));
+//		for (int delta = 1; delta < g_p.board_width; delta++) {
+//			for (int col = g_p.board_width - delta; col < g_p.board_width; col++) {
+//				for (int row = 0; row < g_p.board_height; row++) {
+//					set_val_for_cell(row, col, mask + (delta-1)*g_p.board_ints, 1);
+//				}
+//			}
+//		}
+//	}
+//	return mask + (cols-1)*g_p.board_ints;
+//}
+//
 // return a read-only mask for the specified number of cols on the left
-unsigned *mask_cols_left(unsigned cols)
-{
-	static unsigned need_init = 1;
-	static unsigned *mask;
-	if (need_init) {
-		mask = (unsigned *)calloc(g_p.board_ints * (g_p.board_width-1), sizeof(unsigned));
-		for (int delta = 1; delta < g_p.board_width; delta++) {
-			for (int col = 0; col < delta; col++) {
-				for (int row = 0; row < g_p.board_height; row++) {
-					set_val_for_cell(row, col, mask + (delta-1)*g_p.board_ints, 1);
-				}
-			}
-		}
-	}
-	return mask + (cols-1)*g_p.board_ints;
-}
-
+//unsigned *mask_cols_left(unsigned cols)
+//{
+//	static unsigned need_init = 1;
+//	static unsigned *mask;
+//	if (need_init) {
+//		mask = (unsigned *)calloc(g_p.board_ints * (g_p.board_width-1), sizeof(unsigned));
+//		for (int delta = 1; delta < g_p.board_width; delta++) {
+//			for (int col = 0; col < delta; col++) {
+//				for (int row = 0; row < g_p.board_height; row++) {
+//					set_val_for_cell(row, col, mask + (delta-1)*g_p.board_ints, 1);
+//				}
+//			}
+//		}
+//	}
+//	return mask + (cols-1)*g_p.board_ints;
+//}
+//
 // a mask for the unused bits above the board
-unsigned *mask_rows_top()
-{
-	static unsigned *mask;
-	if (!mask) {
-		mask = (unsigned *)calloc(g_p.board_ints, sizeof(unsigned));
-		if (g_p.board_unused > 0) {
-			mask[g_p.board_ints-1] = - (1 << (32 - g_p.board_unused));
-		}
-	}
-	return mask;
-}
-
+//unsigned *mask_rows_top()
+//{
+//	static unsigned *mask;
+//	if (!mask) {
+//		mask = (unsigned *)calloc(g_p.board_ints, sizeof(unsigned));
+//		if (g_p.board_unused > 0) {
+//			mask[g_p.board_ints-1] = - (1 << (32 - g_p.board_unused));
+//		}
+//	}
+//	return mask;
+//}
+//
 // shift the board by a number of columns
-void colshift(unsigned *board, int delta)
-{
+//void colshift(unsigned *board, int delta)
+//{
 //	printf("colshift -- initial board:\n");
 //	dump_board(board);
-	
-	if (delta < 0) {
-		delta = -delta;
-
+//	
+//	if (delta < 0) {
+//		delta = -delta;
+//
 //		printf("shifting the board %d columns to the left\n", delta);
-
-		// shift the low int to the left (lo-bits) first
-		board[0] >>= delta;
-		
+//
+//		// shift the low int to the left (lo-bits) first
+//		board[0] >>= delta;
+//		
 //		printf("board after shifting the low int to the left\n");
 //		dump_board(board);
-		
-		// get a mask to make the new columns blank
-		unsigned *mask = mask_cols_right(delta);
-
-		if (g_p.board_ints > 1) {
-			// get the bits that will shift out of the hi int
-			unsigned bits = ((1 << delta) - 1) & board[1];
-			// align them to the highest bits
-			bits <<= (32 - delta);
-			// add them to the lo int
-			board[0] |= bits;
-			// now shift the hi int by delta
-			board[1] >>= delta;
-			// mask off the bits in the new cols
-			board[1] &= ~mask[1];
-		}
-		board[0] &= ~mask[0];
-	}else if (delta > 0) {
-	
+//		
+//		// get a mask to make the new columns blank
+//		unsigned *mask = mask_cols_right(delta);
+//
+//		if (g_p.board_ints > 1) {
+//			// get the bits that will shift out of the hi int
+//			unsigned bits = ((1 << delta) - 1) & board[1];
+//			// align them to the highest bits
+//			bits <<= (32 - delta);
+//			// add them to the lo int
+//			board[0] |= bits;
+//			// now shift the hi int by delta
+//			board[1] >>= delta;
+//			// mask off the bits in the new cols
+//			board[1] &= ~mask[1];
+//		}
+//		board[0] &= ~mask[0];
+//	}else if (delta > 0) {
+//	
 //		printf("shifting the board %d columns to the right\n", delta);
-
-		// shift the high int to the right (hi-bits) first
-		unsigned *col_mask = mask_cols_left(delta);
-
+//
+//		// shift the high int to the right (hi-bits) first
+//		unsigned *col_mask = mask_cols_left(delta);
+//
 //		printf("col_mask:\n");
 //		dump_board(col_mask);
-
-		unsigned *row_mask = mask_rows_top();
-
-		if (g_p.board_ints > 1) {
-			board[1] <<= delta;
-		
+//
+//		unsigned *row_mask = mask_rows_top();
+//
+//		if (g_p.board_ints > 1) {
+//			board[1] <<= delta;
+//		
 //			printf("board after shifting the hi int to the right\n");
 //			dump_board(board);
-		
-			// get the bits that will shift out of the lo int
-			unsigned bits = -(1 << (32-delta)) & board[0];
-			// align them to the lo bits
-			bits >>= 32-delta;
-			// add them to the hi int
-			board[1] |= bits;
-			
+//		
+//			// get the bits that will shift out of the lo int
+//			unsigned bits = -(1 << (32-delta)) & board[0];
+//			// align them to the lo bits
+//			bits >>= 32-delta;
+//			// add them to the hi int
+//			board[1] |= bits;
+//			
 //			printf("board after adding the bits that shifted from lo int to hi int\n");
 //			dump_board(board);
-			
-			// mask off the rows above the board and cols on the left
-			board[1] &= ((~row_mask[1]) & (~col_mask[1]));
-			
+//			
+//			// mask off the rows above the board and cols on the left
+//			board[1] &= ((~row_mask[1]) & (~col_mask[1]));
+//			
 //			printf("board after masking off the hi int\n");
 //			dump_board(board);
-		}
-		board[0] <<= delta;
-
+//		}
+//		board[0] <<= delta;
+//
 //		printf("board after shifting the lo int to the right\n");
 //		dump_board(board);
-
-		board[0] &= ~row_mask[0] & ~col_mask[0];
-
+//
+//		board[0] &= ~row_mask[0] & ~col_mask[0];
+//
 //		printf("board after masking off the lo int\n");
 //		dump_board(board);
-	}
-}
+//	}
+//}
+//
+//void rowshift(unsigned *board, int delta)
+//{
+//	colshift(board, delta * g_p.board_width);
+//}
+//
+//void shift_board(unsigned *board, int colDelta, int rowDelta)
+//{
+//	colshift(board, colDelta + g_p.board_width * rowDelta);
+//}
+//
+//void shift_state(unsigned *state, int colDelta, int rowDelta)
+//{
+//	shift_board(state, colDelta, rowDelta);
+//	shift_board(state + g_p.board_ints, colDelta, rowDelta);
+//}
 
-void rowshift(unsigned *board, int delta)
-{
-	colshift(board, delta * g_p.board_width);
-}
 
-void shift_board(unsigned *board, int colDelta, int rowDelta)
-{
-	colshift(board, colDelta + g_p.board_width * rowDelta);
-}
-
-void shift_state(unsigned *state, int colDelta, int rowDelta)
-{
-	shift_board(state, colDelta, rowDelta);
-	shift_board(state + g_p.board_ints, colDelta, rowDelta);
-}
-
-
-// return a pointer to the starting state for the game
-unsigned *start_state()
-{
-	static unsigned *ss = NULL;
-	if (ss == NULL) {
-		ss = (unsigned *)calloc(g_p.state_size, sizeof(unsigned));
-		for (int col = 0; col < g_p.board_width; col++) {
-			set_val_for_cell(0, col, ss, 1);
-			set_val_for_cell(g_p.board_height-1, col, ss + g_p.board_ints, 1); 
-		}
-	}
-	return ss;
-}
 // copy the starting state to the provided location
 void copy_start_state(unsigned *state)
 {
-	bcopy(start_state(), state, g_p.state_size * sizeof(unsigned));
+	bcopy(g_start_state, state, g_p.state_size * sizeof(unsigned));
 }
 
 void switch_sides(unsigned *state)
 {
-	for (int i = 0; i < g_p.board_ints; i++) {
-		unsigned temp = state[i];
-		state[i] = state[i + g_p.board_ints];
-		state[i + g_p.board_ints] = temp;
+	for (int i = 0; i < g_p.board_size; i++) {
+		unsigned temp = X_BOARD(state)[i];
+		X_BOARD(state)[i] = O_BOARD(state)[i];
+		O_BOARD(state)[i] = temp;
 	}
 }
 void copy_state(unsigned *to, unsigned *from)
@@ -395,40 +376,33 @@ void copy_state(unsigned *to, unsigned *from)
 	}
 }
 
+unsigned count_pieces(unsigned *board)
+{
+	unsigned count = 0;
+	for (int i = 0; i < g_p.board_size; i++) {
+		if (board[i]) ++count;
+	}
+	return count;
+}
+
 unsigned is_empty(unsigned *board)
 {
-	for (int i = 0; i < g_p.board_ints; i++) {
+	for (int i = 0; i < g_p.board_size; i++) {
 		if (board[i]) return 0;
 	}
 	return 1;
 }
 
-unsigned not_empty(unsigned *board)
-{
-	if (board[0]) return 1;
-	if (g_p.board_ints > 1 && board[1]) return 1;
-	return 0;
-}
-
-unsigned *empty_board()
-{
-	static unsigned *e = NULL;
-	if (!e) {
-		e = (unsigned *)calloc(g_p.board_ints, sizeof(unsigned));
-	}
-	return e;
-}
+unsigned not_empty(unsigned *board){ return !is_empty(board); }
 
 // Calculate the reward for the given state (from X's perspective)
 // non-zero reward ==> terminal state
-int reward(unsigned *state)
+float reward(unsigned *state, unsigned *terminal)
 {
-//	printf("calculate reward for :\n");
-//	dump_state(state);
-	int reward = 0;
-	if (is_empty(state)) reward = 100;
-	if (is_empty(state + g_p.board_ints)) reward = -100;
-//	printf("reward is %d\n", reward);
+	float reward = 0.0;
+	*terminal = 0;
+	if (is_empty(O_BOARD(state))){ reward = 1.0f; *terminal = 1; }
+	if (is_empty(X_BOARD(state))){ reward = 0.0f; *terminal = 1; }
 	return reward;
 }
 
@@ -456,11 +430,11 @@ void dump_boards(unsigned *b1, unsigned *b2)
 
 void dump_state_ints(unsigned *state)
 {
-	printf("[STATE");
+	printf("[STATE]\n");
 	for (int i = 0; i < g_p.state_size; i++) {
 		printf("%11u", state[i]);
 	}
-	printf("\n");
+	printf("]\n");
 }
 
 void dump_state(unsigned *state)
@@ -481,7 +455,7 @@ void dump_state(unsigned *state)
 //		printf("%11u", state[i]);
 //	}
 //	printf("\n");
-	dump_state_ints(state);
+//	dump_state_ints(state);
 }
 
 void dump_board(unsigned *board)
@@ -519,28 +493,27 @@ void dump_wgts(float *wgts)
 void dump_agent(AGENT *agCPU, unsigned iag, unsigned dumpW)
 {
 	printf("[SEEDS], %10d, %10d %10d %10d\n", agCPU->seeds[iag], agCPU->seeds[iag + g_p.num_agents], agCPU->seeds[iag + 2 * g_p.num_agents], agCPU->seeds[iag + 3 * g_p.num_agents]);
-	printf("[STATE]");
 
 	dump_wgts_header("[ WEIGHTS]");
 	// get the weight pointer for this agent
-	float *pWgts = agCPU->wgts + iag * g_p.alloc_wgts;
+	float *pWgts = agCPU->wgts + iag * g_p.num_wgts;
 	printf("[    B->H]"); dump_wgts(pWgts);
-	for (int i = 0; i < g_p.num_inputs; i++){
+	for (int i = 0; i < g_p.state_size; i++){
 		printf("[IN%03d->H]", i); dump_wgts(pWgts + (1+i) * g_p.num_hidden);
 	}
-	printf("[    H->O]"); dump_wgts(pWgts + (1+g_p.num_inputs) * g_p.num_hidden);
-	printf("[    B->O], %9.4f\n\n", pWgts[(2+g_p.num_inputs) * g_p.num_hidden]);
+	printf("[    H->O]"); dump_wgts(pWgts + (1+g_p.state_size) * g_p.num_hidden);
+	printf("[    B->O], %9.4f\n\n", pWgts[(2+g_p.state_size) * g_p.num_hidden]);
 
 	if (dumpW) {
 		dump_wgts_header("[    W    ]");
 		// get the W pointer for this agent
-		float *pW = agCPU->e + iag * g_p.alloc_wgts;
+		float *pW = agCPU->e + iag * g_p.num_wgts;
 		printf("[    B->H]"); dump_wgts(pW);
-		for (int i = 0; i < g_p.num_inputs; i++){
+		for (int i = 0; i < g_p.state_size; i++){
 			printf("[IN%03d->H]", i); dump_wgts(pW + (1+i) * g_p.num_hidden);
 		}
-		printf("[    H->O]"); dump_wgts(pW + (1+g_p.num_inputs) * g_p.num_hidden);
-		printf("[    B->O], %9.4f\n\n", pW[(2+g_p.num_inputs) * g_p.num_hidden]);
+		printf("[    H->O]"); dump_wgts(pW + (1+g_p.state_size) * g_p.num_hidden);
+		printf("[    B->O], %9.4f\n\n", pW[(2+g_p.state_size) * g_p.num_hidden]);
 	}
 
 	printf("[   alpha], %9.4f\n", agCPU->alpha[iag]);
@@ -565,11 +538,11 @@ void dump_compact_agent(COMPACT_AGENT *ag)
 {
 	printf("[SEEDS], %10d, %10d %10d %10d\n", ag->seeds[0], ag->seeds[1], ag->seeds[2], ag->seeds[3]);
 	printf("[    B->H]"); dump_wgts(ag->fdata + ag->iWgts);
-	for (int i = 0; i < g_p.num_inputs; i++){
+	for (int i = 0; i < g_p.state_size; i++){
 		printf("[IN%03d->H]", i); dump_wgts(ag->fdata +ag->iWgts + (1+i) * g_p.num_hidden);
 	}
-	printf("[    H->O]"); dump_wgts(ag->fdata + ag->iWgts + (1+g_p.num_inputs) * g_p.num_hidden);
-	printf("[    B->O], %9.4f\n", ag->fdata[ag->iWgts + (2+g_p.num_inputs) * g_p.num_hidden]);
+	printf("[    H->O]"); dump_wgts(ag->fdata + ag->iWgts + (1+g_p.state_size) * g_p.num_hidden);
+	printf("[    B->O], %9.4f\n", ag->fdata[ag->iWgts + (2+g_p.state_size) * g_p.num_hidden]);
 	printf("[   alpha], %9.4f\n", ag->fdata[ag->iAlpha]);
 	printf("[ epsilon], %9.4f\n", ag->fdata[ag->iEpsilon]);
 	printf("[  lambda], %9.4f\n", ag->fdata[ag->iLambda]);
@@ -609,94 +582,88 @@ void freeResults(RESULTS *row)
 }
 
 // set the global values for number of valid bits in each board int
-void calc_bits_for_board_ints()
-{
-	g_bits_for_board_ints[0] = (g_p.board_size > 32) ? 32 : g_p.board_size;
-	if (g_p.board_ints == 1) {
-		g_bits_for_board_ints[1] = 0;
-	}else {
-		g_bits_for_board_ints[1] = g_p.board_size - 32;
-	}
-}
+//void calc_bits_for_board_ints()
+//{
+//	g_bits_for_board_ints[0] = (g_p.board_size > 32) ? 32 : g_p.board_size;
+//	if (g_p.board_ints == 1) {
+//		g_bits_for_board_ints[1] = 0;
+//	}else {
+//		g_bits_for_board_ints[1] = g_p.board_size - 32;
+//	}
+//}
 
 // calculates agent pointers based on offset from ag->wgts
 // agent data is organized as follows
 void set_agent_float_pointers(AGENT *ag)
 {
-	ag->e = ag->wgts + g_p.alloc_wgts * g_p.num_agents;
-	ag->alpha = ag->e + g_p.alloc_wgts * g_p.num_agents;
+	ag->e = ag->wgts + g_p.num_wgts * g_p.num_agents;
+	ag->alpha = ag->e + g_p.num_wgts * g_p.num_agents;
 	ag->epsilon = ag->alpha + g_p.num_agents;
 	ag->lambda = ag->epsilon + g_p.num_agents;
 }
 
+
+void build_start_state()
+{
+	g_start_state = (unsigned *)calloc(2*g_p.board_size, sizeof(unsigned));
+	for (int i = 0; i < g_p.board_width; i++) {
+		X_BOARD(g_start_state)[i] = 1;
+		O_BOARD(g_start_state)[(g_p.board_size - 1) - i] = 1;
+	}
+}
+
 /*
 	Build the move array, g_moves, using the allowable moves in g_allowable_moves[8][2]
-	g_moves will be of size board_size * 8 * board_ints
+	g_moves will be of size board_size * 8 * board_size
 */
 void build_move_array()
 {
-//	char buf1[3];
-//	buf1[2] = 0;
-//	char buf2[3];
-//	buf2[2] = 0;
-	g_moves = (unsigned *)calloc(g_p.board_size * 8 * g_p.board_ints, sizeof(unsigned));
+	g_moves = (int *)malloc(g_p.board_size * MAX_MOVES * sizeof(int));
 	for (int row = 0; row < g_p.board_height; row++) {
 		for (int col = 0; col < g_p.board_width; col++) {
 			for (int m = 0; m < 8; m++) {
-				unsigned *board = g_moves + g_p.board_ints * (m + 8*(col + g_p.board_width * row));
+				unsigned iMoves = index4rc(row, col) * MAX_MOVES + m;				
 				int toCol = col + g_allowable_moves[m][0];
 				int toRow = row + g_allowable_moves[m][1];
 				
 				if (toCol >= 0 && toCol < g_p.board_width && toRow >= 0 && toRow < g_p.board_height) {
-//					printf("valid move from %s to %s\n", move_string(buf1, col, row), move_string(buf2, toCol, toRow));
-//					set_val_for_cell(row, col, board, 1);
-					set_val_for_cell(toRow, toCol, board, 1);
-//					dump_board(board);
+					g_moves[iMoves] = index4rc(toRow, toCol);
+				}else {
+					g_moves[iMoves] = -1;
 				}
 			}
 		}
 	}
 }
+
 AGENT *init_agentsCPU(PARAMS p)
 {
 	printf("init_agentsCPU...\n");
 	// save the parameters and calculate any global constants based on the parameters
 	g_p = p;
-	calc_bits_for_board_ints();
 	build_move_array();
+	build_start_state();
 
 	// allocate and initialize the agent data on CPU
 	AGENT *ag = (AGENT *)malloc(sizeof(AGENT));
-	unsigned count = 4*p.num_agents;
-	ag->seeds = (unsigned *)malloc(count * sizeof(unsigned));
+
+	ag->seeds = (unsigned *)malloc(4 * p.num_agents * sizeof(unsigned));
 	for (int i = 0; i < 4*p.num_agents; i++) ag->seeds[i] = rand();
 	
-	ag->state = (unsigned *)malloc(p.num_agents * p.state_size * sizeof(unsigned));
-	
-//	printf("seeds allocated at %p\n", ag->seeds);
-	
-	// allocate one chunk of float data and set up pointers to appropriate parts of that chunk
-	count = (2*p.alloc_wgts + 3) * p.num_agents;
-	ag->wgts = (float *)malloc(count * sizeof(float));
-	set_agent_float_pointers(ag);
-	
-//	printf("total of %d float values allocated\n", count);
-//	printf("float values allocated at %p, first value is %f\n", ag->wgts, ag->wgts[0]);
-//	printf("other pointers ag->e is %p\n", ag->e);
-//	printf("           ag->alpha is %p\n", ag->alpha);
-//	printf("         ag->epsilon is %p\n", ag->epsilon);
-//	printf("          ag->lambda is %p\n", ag->lambda);
-	
+	ag->wgts = (float *)malloc(p.num_wgts * p.num_agents * sizeof(float));
+	ag->e = (float *)malloc(p.num_wgts * p.num_agents * sizeof(float));
+	ag->alpha = (float *)malloc(p.num_agents * sizeof(float));
+	ag->epsilon = (float *)malloc(p.num_agents * sizeof(float));
+	ag->lambda = (float *)malloc(p.num_agents * sizeof(float));
+		
 	// initialize values
-	printf("initializing weights for %d values with min of %f and max of %f\n", p.alloc_wgts * p.num_agents, p.init_wgt_min, p.init_wgt_max);
-	for (int i=0; i < p.alloc_wgts * p.num_agents; i++){
-//		printf("%d ", i);
+//	printf("initializing weights for %d values with min of %f and max of %f\n", p.num_wgts * p.num_agents, p.init_wgt_min, p.init_wgt_max);
+	for (int i=0; i < p.num_wgts * p.num_agents; i++){
 		ag->wgts[i] = rand_wgt2(p.init_wgt_min, p.init_wgt_max);
-//		printf("- ");
 		ag->e[i] = 0.0f;
 	}
 	
-	printf("weights and W have been initialized\n");
+//	printf("weights and W have been initialized\n");
 	
 	for (int i = 0; i < p.num_agents; i++) {
 		ag->alpha[i] = p.alpha;
@@ -704,7 +671,7 @@ AGENT *init_agentsCPU(PARAMS p)
 		ag->lambda[i] = p.lambda;
 	}
 	
-	printf("alpha, epsilon, and lambda have been initialized\n");
+//	printf("alpha, epsilon, and lambda have been initialized\n");
 	
 	return ag;
 }
@@ -720,157 +687,135 @@ char *move_string(char *buff, unsigned col, unsigned row)
 #pragma mark CPU - run
 
 /*
+	Choose the move for player X from the given state using the nn specified by wgts.
+	Return the value of the best state and over-write currState with the best state.
 	calculate the values for every possible next state, and put the best one into nextState, returning its value
 */
-float choose_move(unsigned *currState, float *wgts)
+float choose_move(unsigned *state, float *wgts, float *hidden, float *out)
 {
-	static unsigned *to = NULL;
-	static unsigned *temp = NULL;
-	static float *hidden_activation = NULL;
-	static unsigned *bestMove = NULL;
-	
-	unsigned nextState[MAX_STATE_SIZE];
-	
-	if (!to) to = (unsigned *)calloc(g_p.board_ints * 8, sizeof(unsigned));
-	if (!temp) temp = (unsigned *)calloc(g_p.board_ints * 8, sizeof(unsigned));
-	if (!hidden_activation) hidden_activation = (float *)malloc(g_p.num_hidden * sizeof(float));
-	if (!bestMove) bestMove = (unsigned *)calloc(g_p.state_size, sizeof(unsigned));
-	
-	unsigned *boardA = currState;
-	unsigned *boardB = currState + g_p.board_ints;
-	unsigned *nextA = nextState;
-	unsigned *nextB = nextState + g_p.board_ints;
+//	printf("choose_move...\n");
 	
 	unsigned noVal = 1;
 	float bestVal = 0.0f;
-	unsigned from[2];
-	from[0] = 0; from[1] = 0;
+	unsigned iBestFrom = 0;
+	unsigned iBestTo = 0;
 	unsigned move_count = 0;
 	
 	// loop through all the possible piece positions
-	for (int iInt = 0; iInt < g_p.board_ints; iInt++) {
-		for (int iBit = 0; iBit < g_bits_for_board_ints[iInt]; iBit++) {
-			unsigned iPo = iBit + iInt * 32;
-//			printf("iByte is %d, iBit is %d, iPo = %d\n", iByte, iBit, iPo);
-			from[iInt] = 1 << iBit;
-//			printf("from is");
-//			for (int i = 0; i < g_p.board_ints; i++) {
-//				printf(" %u", from[i]);
-//			}
-//			printf("\n");
-			
-//			printf("move from ...\n");
-//			dump_board(from);
-//			printf("???\n");
-			
-			if (from[iInt] & boardA[iInt]) {
-//				printf("\n\n\ncan move from this spot:\n");
-//				dump_board(from);
-				
-				// there is a piece at this position
-				for (int i = 0; i < 8; i++) {
-					for (int j = 0; j < g_p.board_ints; j++) {
-						unsigned iTo = j + g_p.board_ints * i;
-						// copy the possible moves into the local memory
-						to[iTo] = g_moves[iPo * 8 * g_p.board_ints + iTo];
-						// see if move destination is available
-						temp[iTo] = to[iTo] & ~boardA[j];
-						nextA[j] = (boardA[j] & ~from[j]) | to[iTo];
-						nextB[j] = boardB[j] & ~to[iTo];
+	for (int iFrom = 0; iFrom < g_p.board_size; iFrom++) {
+		if (X_BOARD(state)[iFrom]) {
+			// found a piece that might be able to move, loop over all possible moves
+//			printf("found a piece that can move!\n");
+			for (int m = 0; m < MAX_MOVES; m++) {
+				int iTo = g_moves[iFrom * MAX_MOVES + m];
+				if (iTo >= 0 && !X_BOARD(state)[iTo]) {
+					// found a possible move, modify the board and calculate the value
+					++move_count;
+					unsigned oPiece = O_BOARD(state)[iTo];	// remember if there was an O here
+					X_BOARD(state)[iFrom] = 0;
+					X_BOARD(state)[iTo] = 1;
+					O_BOARD(state)[iTo] = 0;
+					float val = val_for_state(wgts, state, hidden, out);
+//					printf("possible move with value %9.4f:\n", val);
+//					dump_state(state);
+					if (noVal || val > bestVal) {
+//						printf("Best so far !!!\n");
+						// record the best move so far
+						iBestFrom = iFrom;
+						iBestTo = iTo;
+						bestVal = val;
+						noVal = 0;
 					}
-//					printf("temp for possible move %d\n", i);
-//					dump_board(temp + i * g_p.board_ints);
-					if (not_empty(temp + i * g_p.board_ints)) {
-						
-//						printf("boardA:\n");
-//						dump_board(boardA);
-//						
-//						printf("from:\n");
-//						dump_board(from);
-//						
-//						printf("to:\n");
-//						dump_board(to + i * g_p.board_ints);
-//						
-//						printf("results in nextA:\n");
-//						dump_board(nextA);
-//						
-//						printf("possible new board:\n");
-//						dump_state(nextState);
-						++move_count;
-						
-						float val = val_for_state(wgts, nextState, hidden_activation);
-						if (noVal || val > bestVal) {
-							noVal = 0;
-							bestVal = val;
-							for (int k = 0; k < g_p.state_size; k++) {
-								bestMove[k] = nextState[k];
-							}
-							if (g_p.board_ints > 1) bestMove[1] = nextState[1];
-						}
-//						printf("value is %f\n", val_for_state(wgts, nextState, hidden_activation));
-					}
+					// restore the state
+					X_BOARD(state)[iFrom] = 1;
+					X_BOARD(state)[iTo] = 0;
+					O_BOARD(state)[iTo] = oPiece;
 				}
 			}
 		}
-		from[iInt] = 0;
 	}
-//	printf("\n====================\n%d possible moves\n", move_count);
-//	printf("best move with value %f is:\n", bestVal);
-//	dump_state(bestMove);
-	for (int k = 0; k < g_p.state_size; k++) {
-		currState[k] = bestMove[k];
-	}
-//	printf("====================\n");
-	return bestVal;
+	// do the best move and return the value
+	X_BOARD(state)[iBestFrom] = 0;
+	X_BOARD(state)[iBestTo] = 1;
+	O_BOARD(state)[iBestTo] = 0;
+//	printf("best move with value %9.4f:\n", bestVal);
+//	dump_state(state);
+//	printf("\n\n");
+	// recalculate to fill in hidden and out for the chosen move
+	return val_for_state(wgts, state, hidden, out);
 }
 
 // take an action from the specified state, returning the reward
-float take_action(unsigned *state, float *wgts)
+float take_action(unsigned *state, float *wgts, float *hidden, float *out, unsigned *terminal)
 {
-	float r = reward(state);
+	float r = reward(state, terminal);
 	if (r) return r;	// given state is terminal, just return the reward
 	switch_sides(state);
-	choose_move(state, wgts);
+//	printf("state after switching sides:\n");
+//	dump_state(state);
+	choose_move(state, wgts, hidden, out);
+//	printf("state after opponent move:\n");
+//	dump_state(state);
 	switch_sides(state);
-	return -reward(state);
+//	printf("state after switching sides again:\n");
+//	dump_state(state);
+	return reward(state, terminal);
 }
 
 void set_start_state(unsigned *state, unsigned pieces)
 {
+	printf("set_start_state...\n");
 	(pieces == 0) ? copy_start_state(state) : random_state(state, pieces);
 }
 
+void reset_trace(float *e)
+{
+	for (int i = 0; i < g_p.num_wgts; i++) {
+		e[i] = 0.0f;
+	}
+}
+
+void update_wgts(float alpha, float delta, float *wgts, float *e)
+{
+	for (int i = 0; i < g_p.num_wgts; i++) {
+		wgts[i] += alpha * delta * e[i];
+	}
+}
 
 // update eligibility traces using the activation values for hidden and output nodes
-void update_trace(unsigned state128float *wgts, float *e, float *hidden, float *output)
+void update_trace(unsigned *state, float *wgts, float *e, float *hidden, float *out, float lambda)
 {
+	printf("update_trace\n");
+	
 	// first decay all existing values
+	for (int i = 0; i < g_p.num_wgts; i++) {
+		e[i] *= g_p.gamma * lambda;
+	}
 	
 	// next update the weights from hidden layer to output node
 	// first the bias
-	float g_prime_i = output[0] * (1.0f - output[0]);
+	float g_prime_i = out[0] * (1.0f - out[0]);
+	printf("out[0] is %9.4f and g_prime(out) is %9.4f\n", out[0], g_prime_i);
 	unsigned iH2O = (2 * g_p.board_size + 1) * g_p.num_hidden;
 	e[iH2O + g_p.num_hidden] += -1.0f * g_prime_i;
 	
 	// next do all the hidden nodes to output node
 	for (int j = 0; j < g_p.num_hidden; j++) {
 		e[iH2O + j] += hidden[j] * g_prime_i;
+		printf("hidden node %d, activation is %9.4f, increment to e is %9.4f, new e is %9.4f\n", j, hidden[j], g_prime_i*hidden[j], e[iH2O + j]);
 	}
 	
 	// now update the weights to the hidden nodes
 	for (int j = 0; j < g_p.num_hidden; j++) {
-		float error_j = wgts[iH2O + j] * g_prime_i;
-		float g_prime_j = hidden[j]*(1.0f - hidden[j]);
-		
+		float g_prime_j = hidden[j]*(1.0f - hidden[j]) * wgts[iH2O + j] * g_prime_i;
 		// first the bias to the hidden node
 		e[j] += -1.0f * g_prime_j;
 		
 		// then all the input -> hidden values
 		for (int k = 0; k < g_p.board_size * 2; k++) {
-			<#statements#>
+			if (state[k]) e[(k+1)*g_p.num_hidden + j] += g_prime_j;
 		}
 	}
-	
 }
 
 
@@ -879,87 +824,87 @@ void update_trace(unsigned state128float *wgts, float *e, float *hidden, float *
 // Top the learning after num_turns turns (for each player)
 void auto_learn(AGENT *agCPU, unsigned start_pieces, unsigned num_turns)
 {
+	printf("auto_learning...\n");
+	
 	// just one agent is used for this initial coding
 	
 	// set up the starting state
-	set_start_state(agCPU->state, start_pieces);
-
+	unsigned *state = (unsigned *)malloc(g_p.state_size * sizeof(unsigned));
+	float *hidden = (float *)malloc(g_p.num_hidden * sizeof(float));
+	float *out = (float *)malloc(g_p.num_hidden * sizeof(float));
+	
+	set_start_state(state, start_pieces);
 	printf("starting board:\n");
-	dump_state(agCPU->state);		
+	dump_state(state);		
 	
 	// choose the action, storing the next state in agCPU->state and returning the value for the next state
-	float V = choose_move(agCPU->state, agCPU->wgts);
+	float V = choose_move(state, agCPU->wgts, hidden, out);
 	
-	// update eligibility trace here
+	printf("board after first move:\n");
+	dump_state(state);		
+	
+	update_trace(state, agCPU->wgts, agCPU->e, hidden, out, agCPU->lambda[0]);
+	
 	
 	// loop over the number of turns
 	while (num_turns--) {
 		printf("\n\n------- %d turns left -------\n", num_turns+1);
 		printf("after own move:\n");
-		dump_state(agCPU->state);		
+		dump_state(state);		
+		printf("hidden activation values are:\n");
+		for (int i = 0; i < g_p.num_hidden; i++) {
+			printf(i == 0 ? "%9.4f" : ", %9.4f", hidden[i]);
+		}
+		printf("\n");
+		printf("output value is %9.4f\n", out[0]);
+		dump_agent(agCPU, 0, 1);
+		
 
-		float reward = take_action(agCPU->state, agCPU->wgts);
+		unsigned terminal;
+		float reward = take_action(state, agCPU->wgts, hidden, out, &terminal);
 
 		printf("after opponent move:\n");
-		dump_state(agCPU->state);
+		dump_state(state);
 
-		if (reward){
+		if (terminal){
 			printf("\n\n****** GAME OVER with r = %9.4f *******\n\n\n", reward);
-			set_start_state(agCPU->state, start_pieces);
+			set_start_state(state, start_pieces);
 			printf("new starting board:\n");
-			dump_state(agCPU->state);		
+			dump_state(state);		
 		}
-		float V_prime = choose_move(agCPU->state, agCPU->wgts);
-		float delta = reward + (reward ? 0.0f : (g_p.gamma * V_prime)) - V;
-		// update theta's here
-//		if (reward) //reset trace here 
-		// update trace here
+		float V_prime = choose_move(state, agCPU->wgts, hidden, out);
+		float delta = reward + (terminal ? 0.0f : (g_p.gamma * V_prime)) - V;
+		printf("delta = %9.4f\n", delta);
+		update_wgts(agCPU->alpha[0], delta, agCPU->wgts, agCPU->e);
+
+		printf("after updating weights:\n");
+		dump_agent(agCPU, 0, 1);
+
+		if (terminal) reset_trace(agCPU->e);
+		update_trace(state, agCPU->wgts, agCPU->e, hidden, out, agCPU->lambda[0]);
+		
+		printf("after updating trace:\n");
+		dump_agent(agCPU, 0, 1);
+		
 		V = V_prime;
 	}
 	printf("\n\n\n");
+	free(state);
+	free(hidden);
+	free(out);
 }
 
 
 RESULTS *runCPU(AGENT *agCPU)
-{
-	unsigned state[MAX_STATE_SIZE];
-//	state[0] = (unsigned *)malloc(g_p.state_size * sizeof(unsigned));
-//	state[1] = (unsigned *)malloc(g_p.state_size * sizeof(unsigned));
-
-//	random_board(state[0], g_p.board_width);
-//	random_board_masked(state[0] + g_p.board_ints, state[0], g_p.board_width);
-//	random_state(state[0], g_p.board_width);
-	copy_state(state, start_state());
-	dump_state(state);
-	
+{	
 	// test with agent 0
-//	choose_move(state[currState], state[1-currState], agCPU->wgts);
-	
 	dump_agent(agCPU, 0, 0);
 
-	auto_learn(agCPU, 0, 10);
-	auto_learn(agCPU, 1, 10);
-	auto_learn(agCPU, 2, 10);
-	auto_learn(agCPU, 3, 10);
+//	auto_learn(agCPU, 0, 10);
+	auto_learn(agCPU, 1, 5);
+//	auto_learn(agCPU, 2, 10);
+//	auto_learn(agCPU, 3, 10);
 	
-//	unsigned move = 0;
-//	while (0 == reward(state) && move < 50) {
-//		printf("\n\nturn %d:\n", move++);
-//		choose_move(state, agCPU->wgts);
-//		printf("after own move:\n");
-//		dump_state(state);		
-//		switch_sides(state);
-////			printf("board after switching sides:\n");
-////			dump_state(state[currState]);
-//		choose_move(state, agCPU->wgts);
-////			printf("after the move....\n");
-////			dump_state(state[currState]);
-//		switch_sides(state);
-////			printf("switching sides back....\n");
-////			dump_state(state[currState]);
-//		printf("after opponent's move:\n");
-//		dump_state(state);		
-//	}
 	return NULL;
 }
 
@@ -972,7 +917,7 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 {
 	AGENT *agGPU = (AGENT *)malloc(sizeof(AGENT));
 	agGPU->seeds = device_copyui(agCPU->seeds, 4 * g_p.num_agents);
-	agGPU->wgts = device_copyf(agCPU->wgts, g_p.agent_float_count * g_p.num_agents);
+	agGPU->wgts = device_copyf(agCPU->wgts, g_p.num_agent_floats * g_p.num_agents);
 	set_agent_float_pointers(agGPU);
 	
 	
