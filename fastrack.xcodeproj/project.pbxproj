@@ -19,6 +19,7 @@
 		103C8DA512B8197100FE2066 /* junk */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = junk; sourceTree = "<group>"; };
 		103C8DC712B821A800FE2066 /* wgts.csv */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = wgts.csv; sourceTree = "<group>"; };
 		103C8E3A12B8D51900FE2066 /* notes.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = notes.txt; sourceTree = "<group>"; };
+		103C904712BA32FB00FE2066 /* wins.csv */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = wins.csv; sourceTree = "<group>"; };
 		106FF7F5119EE68B000CD6C8 /* Makefile */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.make; path = Makefile; sourceTree = "<group>"; };
 		106FF80D119EE7F5000CD6C8 /* main.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = main.c; sourceTree = "<group>"; };
 		106FF828119EEF51000CD6C8 /* cuda_utils.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = cuda_utils.h; sourceTree = "<group>"; };
@@ -66,6 +67,7 @@
 				103C8DA512B8197100FE2066 /* junk */,
 				103C8DC712B821A800FE2066 /* wgts.csv */,
 				103C8E3A12B8D51900FE2066 /* notes.txt */,
+				103C904712BA32FB00FE2066 /* wins.csv */,
 			);
 			name = "notes and results";
 			sourceTree = "<group>";

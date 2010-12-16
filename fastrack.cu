@@ -420,13 +420,13 @@ void dump_col_header(unsigned leftMargin, unsigned nCols)
 	printf("\n");
 }
 
-void dump_boards(unsigned *b1, unsigned *b2)
-{
-	unsigned *state = (unsigned *)malloc(2 * g_p.state_size * sizeof(unsigned));
-	bcopy(b1, state, g_p.state_size * sizeof(unsigned));
-	bcopy(b2, state + g_p.state_size, g_p.state_size * sizeof(unsigned));
-	dump_state(state);
-}
+//void dump_boards(unsigned *b1, unsigned *b2)
+//{
+//	unsigned *state = (unsigned *)malloc(2 * g_p.state_size * sizeof(unsigned));
+//	bcopy(b1, state, g_p.state_size * sizeof(unsigned));
+//	bcopy(b2, state + g_p.state_size, g_p.state_size * sizeof(unsigned));
+//	dump_state(state);
+//}
 
 void dump_state_ints(unsigned *state)
 {
@@ -437,9 +437,10 @@ void dump_state_ints(unsigned *state)
 	printf("]\n");
 }
 
-void dump_state(unsigned *state)
+void dump_state(unsigned *state, unsigned turn, unsigned nextToPlay)
 {
 //	printf("dump_state for %u %u %u %u\n", state[3], state[2], state[1], state[0]);
+	printf("turn %3d, %s to play:\n", turn, (nextToPlay ? "O" : "X"));
 	dump_col_header(3, g_p.board_width);
 	for (int row = g_p.board_height - 1; row >= 0; row--) {
 		printf("%2u ", row+1);
@@ -683,8 +684,63 @@ char *move_string(char *buff, unsigned col, unsigned row)
 	return buff;
 }
 
+char *move_stringi(char *buff, unsigned i)
+{
+	return move_string(buff, i % g_p.board_width, i / g_p.board_width);
+}
+
+
 
 #pragma mark CPU - run
+
+float random_move(unsigned *state)
+{
+//	printf("choose_move...\n");
+	static unsigned *possible_moves = NULL;
+	static unsigned allocated = 0;
+	if (!possible_moves){
+		allocated = 100;
+		possible_moves = (unsigned *)malloc(allocated * 2 * sizeof(unsigned));
+	}
+	unsigned move_count = 0;
+	
+	// loop through all the possible piece positions
+	for (int iFrom = 0; iFrom < g_p.board_size; iFrom++) {
+		if (X_BOARD(state)[iFrom]) {
+			// found a piece that might be able to move, loop over all possible moves
+//			printf("found a piece that can move!\n");
+			for (int m = 0; m < MAX_MOVES; m++) {
+				int iTo = g_moves[iFrom * MAX_MOVES + m];
+				if (iTo >= 0 && !X_BOARD(state)[iTo]) {
+					// found a possible move, save it
+					if (move_count == allocated) {
+						// need to grow the possible moves list
+						allocated *= 2;
+						possible_moves = (unsigned *)realloc(possible_moves, allocated * 2 * sizeof(unsigned));
+					}
+					possible_moves[move_count * 2] = iFrom;
+					possible_moves[move_count * 2 + 1] = iTo;
+					++move_count;
+				}
+			}
+		}
+	}
+	
+	unsigned r = move_count * ranf();
+	unsigned iRandFrom = possible_moves[r*2];
+	unsigned iRandTo = possible_moves[r*2 + 1];
+	// do the random move and return the value
+	X_BOARD(state)[iRandFrom] = 0;
+	X_BOARD(state)[iRandTo] = 1;
+	O_BOARD(state)[iRandTo] = 0;
+	
+//	printf("best move with value %9.4f:\n", bestVal);
+//	dump_state(state);
+//	printf("\n\n");
+	// recalculate to fill in hidden and out for the chosen move
+	return 0.0f;
+}
+
 
 /*
 	Choose the move for player X from the given state using the nn specified by wgts.
@@ -738,6 +794,7 @@ float choose_move(unsigned *state, float *wgts, float *hidden, float *out)
 	X_BOARD(state)[iBestFrom] = 0;
 	X_BOARD(state)[iBestTo] = 1;
 	O_BOARD(state)[iBestTo] = 0;
+	
 //	printf("best move with value %9.4f:\n", bestVal);
 //	dump_state(state);
 //	printf("\n\n");
@@ -745,15 +802,32 @@ float choose_move(unsigned *state, float *wgts, float *hidden, float *out)
 	return val_for_state(wgts, state, hidden, out);
 }
 
-// take an action from the specified state, returning the reward
-float take_action(unsigned *state, float *wgts, float *hidden, float *out, unsigned *terminal)
+// O take an action from the specified state, returning the reward
+float take_action(unsigned *state, float *owgts, float *hidden, float *out, unsigned *terminal)
 {
 	float r = reward(state, terminal);
 	if (r) return r;	// given state is terminal, just return the reward
 	switch_sides(state);
 //	printf("state after switching sides:\n");
 //	dump_state(state);
-	choose_move(state, wgts, hidden, out);
+	choose_move(state, owgts, hidden, out);
+//	printf("state after opponent move:\n");
+//	dump_state(state);
+	switch_sides(state);
+//	printf("state after switching sides again:\n");
+//	dump_state(state);
+	return reward(state, terminal);
+}
+
+// O takes a random action from the specified state, returning X's reward
+float take_random_action(unsigned *state, unsigned *terminal)
+{
+	float r = reward(state, terminal);
+	if (r) return r;	// given state is terminal, just return the reward
+	switch_sides(state);
+//	printf("state after switching sides:\n");
+//	dump_state(state);
+	random_move(state);
 //	printf("state after opponent move:\n");
 //	dump_state(state);
 	switch_sides(state);
@@ -764,7 +838,7 @@ float take_action(unsigned *state, float *wgts, float *hidden, float *out, unsig
 
 void set_start_state(unsigned *state, unsigned pieces)
 {
-	printf("set_start_state...\n");
+//	printf("set_start_state...\n");
 	(pieces == 0) ? copy_start_state(state) : random_state(state, pieces);
 }
 
@@ -785,7 +859,7 @@ void update_wgts(float alpha, float delta, float *wgts, float *e)
 // update eligibility traces using the activation values for hidden and output nodes
 void update_trace(unsigned *state, float *wgts, float *e, float *hidden, float *out, float lambda)
 {
-	printf("update_trace\n");
+//	printf("update_trace\n");
 	
 	// first decay all existing values
 	for (int i = 0; i < g_p.num_wgts; i++) {
@@ -795,14 +869,14 @@ void update_trace(unsigned *state, float *wgts, float *e, float *hidden, float *
 	// next update the weights from hidden layer to output node
 	// first the bias
 	float g_prime_i = out[0] * (1.0f - out[0]);
-	printf("out[0] is %9.4f and g_prime(out) is %9.4f\n", out[0], g_prime_i);
+//	printf("out[0] is %9.4f and g_prime(out) is %9.4f\n", out[0], g_prime_i);
 	unsigned iH2O = (2 * g_p.board_size + 1) * g_p.num_hidden;
 	e[iH2O + g_p.num_hidden] += -1.0f * g_prime_i;
 	
 	// next do all the hidden nodes to output node
 	for (int j = 0; j < g_p.num_hidden; j++) {
 		e[iH2O + j] += hidden[j] * g_prime_i;
-		printf("hidden node %d, activation is %9.4f, increment to e is %9.4f, new e is %9.4f\n", j, hidden[j], g_prime_i*hidden[j], e[iH2O + j]);
+//		printf("hidden node %d, activation is %9.4f, increment to e is %9.4f, new e is %9.4f\n", j, hidden[j], g_prime_i*hidden[j], e[iH2O + j]);
 	}
 	
 	// now update the weights to the hidden nodes
@@ -818,96 +892,279 @@ void update_trace(unsigned *state, float *wgts, float *e, float *hidden, float *
 	}
 }
 
+#define SHOW if(show) 
 
-// run a learning session using agent 0 playing against itself
-// Start with a random board with start_pieces per side, or the normal starting board if start_pieces is 0
-// Top the learning after num_turns turns (for each player)
-void auto_learn(AGENT *agCPU, unsigned start_pieces, unsigned num_turns)
+void compete(float *ag1_wgts, char *name1, float *ag2_wgts, char *name2, unsigned start_pieces, unsigned num_games, unsigned turns_per_game, unsigned show)
 {
-	printf("auto_learning...\n");
-	
-	// just one agent is used for this initial coding
-	
+	printf("\n=================================================================\n");
+	printf("         %s     vs.     %s\n", name1, name2);
+	// play a numbr of games, ag1_wgts vs ag2_wgts
 	// set up the starting state
 	unsigned *state = (unsigned *)malloc(g_p.state_size * sizeof(unsigned));
 	float *hidden = (float *)malloc(g_p.num_hidden * sizeof(float));
 	float *out = (float *)malloc(g_p.num_hidden * sizeof(float));
 	
+	unsigned wins = 0;
+	unsigned losses = 0;
+	unsigned turn = 0;
+	unsigned game = 0;
+	unsigned terminal;
+	
+	SHOW printf(  "-----------------------------------------------------------------\n");
+	SHOW printf("game %d:\n", game);
+
 	set_start_state(state, start_pieces);
-	printf("starting board:\n");
-	dump_state(state);		
+	if (ranf() < 0.50f) {
+		SHOW printf("New game, O plays first\n");
+		SHOW dump_state(state, turn, 1);
+		(ag2_wgts	? take_action(state, ag2_wgts, hidden, out, &terminal)
+					: take_random_action(state, &terminal));
+		++turn;
+	}else {
+		SHOW printf("New game, X plays first\n");
+	}
+	SHOW dump_state(state, turn, 0);
+
 	
+	float V = (ag1_wgts	? choose_move(state, ag1_wgts, hidden, out)
+					: random_move(state));
+	
+	while (game < num_games) {
+		SHOW dump_state(state, turn, 1);
+		float reward = (ag2_wgts	? take_action(state, ag2_wgts, hidden, out, &terminal)
+									: take_random_action(state, &terminal));
+		++turn;
+		SHOW dump_state(state, turn, 0);
+		
+		if (terminal){
+			if (reward > 0.0f){ ++wins; SHOW printf("*** game won ***\n");}
+			if (reward == 0.0f){ ++losses; SHOW printf("*** game lost ***\n");}
+		}
+		
+		if (terminal || (turn == turns_per_game)) {
+			SHOW if (!terminal) printf("*** turn limit reached ***\n");
+			if (++game < num_games){
+				// get ready for next game
+				SHOW printf(  "-----------------------------------------------------------------\n");
+				SHOW printf("\ngame %d:\n", game);
+				turn = 0;
+				set_start_state(state, start_pieces);
+				if (ranf() < 0.50f) {
+					SHOW printf("New game, O plays first\n");
+					SHOW dump_state(state, turn, 1);
+					(ag2_wgts	? take_action(state, ag2_wgts, hidden, out, &terminal)
+								: take_random_action(state, &terminal));
+					++turn;
+					SHOW dump_state(state, turn, 0);
+				}else {
+					SHOW printf("New game, X plays first\n");
+				}
+				SHOW dump_state(state, turn, 0);
+			}
+		}
+
+		float V_prime = (ag1_wgts	? choose_move(state, ag1_wgts, hidden, out)
+								: random_move(state));
+		V = V_prime;
+	}
+	printf("%7d, %7d, %7d\n", wins, losses, wins-losses);
+	free(state);
+	free(hidden);
+	free(out);
+
+}
+
+//#define DUMP_MOVES
+
+// run a learning session using agent ag1 against ag2.  ag2 may be NULL which represents a random player
+// Start with a random board with start_pieces per side, or the normal starting board if start_pieces is 0
+// Top the learning after num_turns turns (for each player)
+void auto_learn(AGENT *ag1, float *ag2_wgts, unsigned start_pieces, unsigned num_games, unsigned turns_per_game)
+{
+	if (!ag1) {
+		printf("***ERROR *** random agent can not learn!!!\n");
+		exit(-1);
+	}
+	
+#ifdef DUMP_MOVES
+	printf("auto_learning for %d games, %d turns per game...\n", num_games, turns_per_game);
+#endif	
+	// set up the starting state
+	unsigned *state = (unsigned *)malloc(g_p.state_size * sizeof(unsigned));
+	float *hidden = (float *)malloc(g_p.num_hidden * sizeof(float));
+	float *out = (float *)malloc(g_p.num_hidden * sizeof(float));
+	
+	unsigned wins = 0;
+	unsigned losses = 0;
+	unsigned turn = 0;
+	unsigned terminal;
+	unsigned game = 0;
+	
+	set_start_state(state, start_pieces);
+	if (ranf() < 0.50f) {
+#ifdef DUMP_MOVES
+		printf("New game, O to play first...\n");
+		dump_state(state, turn, 1);		
+#endif
+		(ag2_wgts	? take_action(state, ag2_wgts, hidden, out, &terminal) 
+							: take_random_action(state, &terminal));
+		++turn;
+	}else {
+#ifdef DUMP_MOVES
+		printf("New game, X to play first...\n");
+#endif
+	}
+
+#ifdef DUMP_MOVES
+	dump_state(state, turn, 0);		
+#endif
+
 	// choose the action, storing the next state in agCPU->state and returning the value for the next state
-	float V = choose_move(state, agCPU->wgts, hidden, out);
+	float V = choose_move(state, ag1->wgts, hidden, out);
 	
-	printf("board after first move:\n");
-	dump_state(state);		
-	
-	update_trace(state, agCPU->wgts, agCPU->e, hidden, out, agCPU->lambda[0]);
+	update_trace(state, ag1->wgts, ag1->e, hidden, out, ag1->lambda[0]);
 	
 	
 	// loop over the number of turns
-	while (num_turns--) {
-		printf("\n\n------- %d turns left -------\n", num_turns+1);
-		printf("after own move:\n");
-		dump_state(state);		
-		printf("hidden activation values are:\n");
-		for (int i = 0; i < g_p.num_hidden; i++) {
-			printf(i == 0 ? "%9.4f" : ", %9.4f", hidden[i]);
-		}
-		printf("\n");
-		printf("output value is %9.4f\n", out[0]);
-		dump_agent(agCPU, 0, 1);
+	while (game < num_games) {
+
+#ifdef DUMP_MOVES
+		dump_state(state, turn, 1);
+#endif
+
+//		printf("\n\n------- %d turns left -------\n", num_turns+1);
+//		printf("after own move, turn %d:\n", turn);
+//		dump_state(state);		
+//		printf("hidden activation values are:\n");
+//		for (int i = 0; i < g_p.num_hidden; i++) {
+//			printf(i == 0 ? "%9.4f" : ", %9.4f", hidden[i]);
+//		}
+//		printf("\n");
+//		printf("output value is %9.4f\n", out[0]);
+//		dump_agent(agCPU, 0, 1);
 		
 
-		unsigned terminal;
-		float reward = take_action(state, agCPU->wgts, hidden, out, &terminal);
-
-		printf("after opponent move:\n");
-		dump_state(state);
-
+		float reward = (ag2_wgts	? take_action(state, ag2_wgts, hidden, out, &terminal) 
+									: take_random_action(state, &terminal));
+		++turn;
+#ifdef DUMP_MOVES
+		dump_state(state, turn, 0);		
+#endif
+		
+//		printf("after opponent move, turn %d:\n", turn++);
+//		dump_state(state);
+		
 		if (terminal){
-			printf("\n\n****** GAME OVER with r = %9.4f *******\n\n\n", reward);
-			set_start_state(state, start_pieces);
-			printf("new starting board:\n");
-			dump_state(state);		
+			if (reward > 0.0f) ++wins;
+			if (reward == 0.0f) ++losses;
+#ifdef DUMP_MOVES
+			printf("\n\n****** GAME OVER after %d turns with r = %9.4f *******\n", turn, reward);
+			printf("record is now %d - %d\n\n\n", wins, losses);
+#endif
 		}
-		float V_prime = choose_move(state, agCPU->wgts, hidden, out);
-		float delta = reward + (terminal ? 0.0f : (g_p.gamma * V_prime)) - V;
-		printf("delta = %9.4f\n", delta);
-		update_wgts(agCPU->alpha[0], delta, agCPU->wgts, agCPU->e);
-
-		printf("after updating weights:\n");
-		dump_agent(agCPU, 0, 1);
-
-		if (terminal) reset_trace(agCPU->e);
-		update_trace(state, agCPU->wgts, agCPU->e, hidden, out, agCPU->lambda[0]);
 		
-		printf("after updating trace:\n");
-		dump_agent(agCPU, 0, 1);
+		if (terminal || (turn == turns_per_game)) {
+#ifdef DUMP_MOVES
+			if (!terminal) printf("****** GAME OVER: reached maximum number of turns per game\n");
+#endif
+			if (++game < num_games) {
+#ifdef DUMP_MOVES
+				printf("\n\n--------------- game %d ---------------------\n", game);
+#endif
+				turn = 0;
+				set_start_state(state, start_pieces);
+				if (ranf() < 0.50f) {
+#ifdef DUMP_MOVES
+					printf("New game, O to play first...\n");
+					dump_state(state, turn, 1);		
+#endif
+					(ag2_wgts	? take_action(state, ag2_wgts, hidden, out, &terminal) 
+								: take_random_action(state, &terminal));
+					++turn;
+				}else {
+#ifdef DUMP_MOVES
+					printf("New game, X to play first...\n");
+#endif
+				}
+
+#ifdef DUMP_MOVES
+				dump_state(state, turn, 0);		
+#endif
+			}
+		}
+//		printf("choosing next move...\n");
+		float V_prime = choose_move(state, ag1->wgts, hidden, out);
+		float delta = reward + (terminal ? 0.0f : (g_p.gamma * V_prime)) - V;
+//		printf("delta = %9.4f\n", delta);
+//		printf("updating wgts...\n");
+		update_wgts(ag1->alpha[0], delta, ag1->wgts, ag1->e);
+
+//		printf("after updating weights:\n");
+//		dump_agent(agCPU, 0, 1);
+
+		if (terminal) reset_trace(ag1->e);
+//		printf("updating trace...\n");
+		update_trace(state, ag1->wgts, ag1->e, hidden, out, ag1->lambda[0]);
+		
+//		printf("after updating trace:\n");
+//		dump_agent(agCPU, 0, 1);
 		
 		V = V_prime;
 	}
-	printf("\n\n\n");
+	printf("learning session is over...\n");
+	printf("%7d, %7d, %7d\n", wins, losses, wins-losses);
 	free(state);
 	free(hidden);
 	free(out);
 }
 
+void copy_agent(AGENT *agCPU, unsigned iFrom, unsigned iTo)
+{
+	// copy wgts
+	printf("copying agent weights from %d to %d ... ", iFrom, iTo);
+	for (int i = 0; i < g_p.num_wgts; i++) {
+		agCPU->wgts[i + iTo * g_p.num_wgts] = agCPU->wgts[i + iFrom * g_p.num_wgts];
+	}
+	printf("done\n");
+}
 
 RESULTS *runCPU(AGENT *agCPU)
 {	
 	// test with agent 0
-	dump_agent(agCPU, 0, 0);
+//	dump_agent(agCPU, 0, 0);
 
 //	auto_learn(agCPU, 0, 10);
-	auto_learn(agCPU, 1, 5);
-//	auto_learn(agCPU, 2, 10);
-//	auto_learn(agCPU, 3, 10);
+
+	unsigned pieces = 5;
+	unsigned max_turns = 10;
+	unsigned games_per_rep = 5000;
+	unsigned reps = 10;
+	if (reps > g_p.num_agents) reps = g_p.num_agents;
+	unsigned test_games = 1000;
+
+	printf("NODES, BOARD_WIDTH, BOARD_HEIGHT, PIECES, MAX_TURNS, GAMES, REPS\n");
+	printf("%d, %d, %d, %d, %d, %d, %d\n", g_p.num_hidden, g_p.board_width, g_p.board_height, pieces, max_turns, games_per_rep, reps);
+	printf("initial agent, before learning:\n");
+	dump_agent(agCPU, 1, 0);
+	
+	auto_learn(agCPU, NULL, pieces, games_per_rep, max_turns);
+	for (int i = 1; i < reps; i++) {
+		// save the agent weight
+		copy_agent(agCPU, 0, i);
+		printf("agent after %d episodes of learning:\n", i);
+		dump_agent(agCPU, i, 0);
+		auto_learn(agCPU, agCPU->wgts + i * g_p.num_wgts, pieces, games_per_rep, max_turns);
+	}
+	char buff[16];
+	for (int i = 1; i < reps; i++) {
+		snprintf(buff, 16, "FT_%03d", i);
+		compete(agCPU->wgts, "FT_MAX", agCPU->wgts + i * g_p.num_wgts, buff, pieces, test_games, max_turns, 0);
+	}
+	snprintf(buff, 16, "FT_%03d", reps-1);
+	compete(agCPU->wgts, "FT_MAX", agCPU->wgts + (reps - 1) * g_p.num_wgts, buff, pieces, 4, max_turns, 1);
 	
 	return NULL;
 }
-
 
 
 #pragma mark -
@@ -919,7 +1176,6 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 	agGPU->seeds = device_copyui(agCPU->seeds, 4 * g_p.num_agents);
 	agGPU->wgts = device_copyf(agCPU->wgts, g_p.num_agent_floats * g_p.num_agents);
 	set_agent_float_pointers(agGPU);
-	
 	
 	return agGPU;
 }
