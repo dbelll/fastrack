@@ -101,11 +101,36 @@ void freeCompactAgent(COMPACT_AGENT *ag)
 #pragma mark -
 #pragma mark game functions
 
+unsigned is_empty(unsigned *board)
+{
+	for (int i = 0; i < g_p.board_size; i++) {
+		if (board[i]) return 0;
+	}
+	return 1;
+}
+
+unsigned not_empty(unsigned *board){ return !is_empty(board); }
+
+// Calculate the reward for the given state (from X's perspective)
+// non-zero reward ==> terminal state
+float reward(unsigned *state, unsigned *terminal)
+{
+	float reward = 0.5f;
+	*terminal = 0;
+	if (is_empty(O_BOARD(state))){ reward = 1.0f; *terminal = 1; }
+	if (is_empty(X_BOARD(state))){ reward = 0.0f; *terminal = 1; }
+	return reward;
+}
+
 // Calcualte the value for a state s using the specified weights,
 // storing hidden activation in the specified location and returning the output value
 float val_for_state(float *wgts, unsigned *state, float *hidden, float *out)
 {
 //	printf("calculating value for state...\n");
+	unsigned terminal;
+	float r = reward(state, &terminal);
+	if (terminal) return r;
+
 	out[0] = 0.0f;
 	
 	for (unsigned iHidden = 0; iHidden < g_p.num_hidden; iHidden++) {
@@ -383,27 +408,6 @@ unsigned count_pieces(unsigned *board)
 		if (board[i]) ++count;
 	}
 	return count;
-}
-
-unsigned is_empty(unsigned *board)
-{
-	for (int i = 0; i < g_p.board_size; i++) {
-		if (board[i]) return 0;
-	}
-	return 1;
-}
-
-unsigned not_empty(unsigned *board){ return !is_empty(board); }
-
-// Calculate the reward for the given state (from X's perspective)
-// non-zero reward ==> terminal state
-float reward(unsigned *state, unsigned *terminal)
-{
-	float reward = 0.0;
-	*terminal = 0;
-	if (is_empty(O_BOARD(state))){ reward = 1.0f; *terminal = 1; }
-	if (is_empty(X_BOARD(state))){ reward = 0.0f; *terminal = 1; }
-	return reward;
 }
 
 #pragma mark -
@@ -751,6 +755,11 @@ float choose_move(unsigned *state, float *wgts, float *hidden, float *out)
 {
 //	printf("choose_move...\n");
 	
+	unsigned terminal;
+	float r = reward(state, &terminal);
+	if (terminal) {
+		return r;
+	}
 	unsigned noVal = 1;
 	float bestVal = 0.0f;
 	unsigned iBestFrom = 0;
@@ -806,7 +815,7 @@ float choose_move(unsigned *state, float *wgts, float *hidden, float *out)
 float take_action(unsigned *state, float *owgts, float *hidden, float *out, unsigned *terminal)
 {
 	float r = reward(state, terminal);
-	if (r) return r;	// given state is terminal, just return the reward
+	if (*terminal) return r;	// given state is terminal, just return the reward
 	switch_sides(state);
 //	printf("state after switching sides:\n");
 //	dump_state(state);
@@ -823,7 +832,7 @@ float take_action(unsigned *state, float *owgts, float *hidden, float *out, unsi
 float take_random_action(unsigned *state, unsigned *terminal)
 {
 	float r = reward(state, terminal);
-	if (r) return r;	// given state is terminal, just return the reward
+	if (*terminal) return r;	// given state is terminal, just return the reward
 	switch_sides(state);
 //	printf("state after switching sides:\n");
 //	dump_state(state);
@@ -859,8 +868,9 @@ void update_wgts(float alpha, float delta, float *wgts, float *e)
 // update eligibility traces using the activation values for hidden and output nodes
 void update_trace(unsigned *state, float *wgts, float *e, float *hidden, float *out, float lambda)
 {
-//	printf("update_trace\n");
-	
+#ifdef DUMP_MOVES
+	printf("update_trace\n");
+#endif
 	// first decay all existing values
 	for (int i = 0; i < g_p.num_wgts; i++) {
 		e[i] *= g_p.gamma * lambda;
@@ -894,18 +904,20 @@ void update_trace(unsigned *state, float *wgts, float *e, float *hidden, float *
 
 #define SHOW if(show) 
 
-void compete(float *ag1_wgts, char *name1, float *ag2_wgts, char *name2, unsigned start_pieces, unsigned num_games, unsigned turns_per_game, unsigned show)
+COMPETE_RESULTS compete(float *ag1_wgts, const char *name1, float *ag2_wgts, const char *name2, unsigned start_pieces, unsigned num_games, unsigned turns_per_game, unsigned show)
 {
-	printf("\n=================================================================\n");
-	printf("         %s     vs.     %s\n", name1, name2);
+//	printf("\n=================================================================\n");
+//	printf("         %s     vs.     %s\n", name1, name2);
 	// play a numbr of games, ag1_wgts vs ag2_wgts
 	// set up the starting state
 	unsigned *state = (unsigned *)malloc(g_p.state_size * sizeof(unsigned));
 	float *hidden = (float *)malloc(g_p.num_hidden * sizeof(float));
 	float *out = (float *)malloc(g_p.num_hidden * sizeof(float));
 	
-	unsigned wins = 0;
-	unsigned losses = 0;
+	COMPETE_RESULTS cr;
+	cr.games = num_games;
+	cr.wins = 0;
+	cr.losses = 0;
 	unsigned turn = 0;
 	unsigned game = 0;
 	unsigned terminal;
@@ -937,8 +949,8 @@ void compete(float *ag1_wgts, char *name1, float *ag2_wgts, char *name2, unsigne
 		SHOW dump_state(state, turn, 0);
 		
 		if (terminal){
-			if (reward > 0.0f){ ++wins; SHOW printf("*** game won ***\n");}
-			if (reward == 0.0f){ ++losses; SHOW printf("*** game lost ***\n");}
+			if (reward > 0.0f){ ++cr.wins; SHOW printf("*** game won ***\n");}
+			if (reward == 0.0f){ ++cr.losses; SHOW printf("*** game lost ***\n");}
 		}
 		
 		if (terminal || (turn == turns_per_game)) {
@@ -948,6 +960,7 @@ void compete(float *ag1_wgts, char *name1, float *ag2_wgts, char *name2, unsigne
 				SHOW printf(  "-----------------------------------------------------------------\n");
 				SHOW printf("\ngame %d:\n", game);
 				turn = 0;
+				terminal = 0;
 				set_start_state(state, start_pieces);
 				if (ranf() < 0.50f) {
 					SHOW printf("New game, O plays first\n");
@@ -967,14 +980,14 @@ void compete(float *ag1_wgts, char *name1, float *ag2_wgts, char *name2, unsigne
 								: random_move(state));
 		V = V_prime;
 	}
-	printf("%7d, %7d, %7d\n", wins, losses, wins-losses);
+	printf("[COMPETE],%5d, %8s,%5d, %8s,%5d", num_games, name1, cr.wins, name2, cr.losses);
+//	printf("%7d, %7d, %7d\n", wins, losses, wins-losses);
 	free(state);
 	free(hidden);
 	free(out);
-
+	return cr;
 }
 
-//#define DUMP_MOVES
 
 // run a learning session using agent ag1 against ag2.  ag2 may be NULL which represents a random player
 // Start with a random board with start_pieces per side, or the normal starting board if start_pieces is 0
@@ -997,7 +1010,7 @@ void auto_learn(AGENT *ag1, float *ag2_wgts, unsigned start_pieces, unsigned num
 	unsigned wins = 0;
 	unsigned losses = 0;
 	unsigned turn = 0;
-	unsigned terminal;
+	unsigned terminal = 0;
 	unsigned game = 0;
 	
 	set_start_state(state, start_pieces);
@@ -1006,7 +1019,7 @@ void auto_learn(AGENT *ag1, float *ag2_wgts, unsigned start_pieces, unsigned num
 		printf("New game, O to play first...\n");
 		dump_state(state, turn, 1);		
 #endif
-		(ag2_wgts	? take_action(state, ag2_wgts, hidden, out, &terminal) 
+		float r = (ag2_wgts	? take_action(state, ag2_wgts, hidden, out, &terminal) 
 							: take_random_action(state, &terminal));
 		++turn;
 	}else {
@@ -1023,7 +1036,8 @@ void auto_learn(AGENT *ag1, float *ag2_wgts, unsigned start_pieces, unsigned num
 	float V = choose_move(state, ag1->wgts, hidden, out);
 	
 	update_trace(state, ag1->wgts, ag1->e, hidden, out, ag1->lambda[0]);
-	
+//	printf("after updating trace...\n");
+//	dump_agent(ag1, 0, 1);
 	
 	// loop over the number of turns
 	while (game < num_games) {
@@ -1105,8 +1119,10 @@ void auto_learn(AGENT *ag1, float *ag2_wgts, unsigned start_pieces, unsigned num
 		if (terminal) reset_trace(ag1->e);
 //		printf("updating trace...\n");
 		update_trace(state, ag1->wgts, ag1->e, hidden, out, ag1->lambda[0]);
-		
+
 //		printf("after updating trace:\n");
+//		dump_agent(ag1, 0, 1);
+
 //		dump_agent(agCPU, 0, 1);
 		
 		V = V_prime;
@@ -1121,11 +1137,33 @@ void auto_learn(AGENT *ag1, float *ag2_wgts, unsigned start_pieces, unsigned num
 void copy_agent(AGENT *agCPU, unsigned iFrom, unsigned iTo)
 {
 	// copy wgts
-	printf("copying agent weights from %d to %d ... ", iFrom, iTo);
+//	printf("copying agent weights from %d to %d ... ", iFrom, iTo);
 	for (int i = 0; i < g_p.num_wgts; i++) {
 		agCPU->wgts[i + iTo * g_p.num_wgts] = agCPU->wgts[i + iFrom * g_p.num_wgts];
 	}
-	printf("done\n");
+//	printf("done\n");
+}
+
+void progress_indicator(COMPETE_RESULTS after, COMPETE_RESULTS before)
+{
+//	printf("\nbefore: W%4d  L%4d  Net%4d", before.wins, before.losses, before.wins - before.losses);
+//	printf(" after: W%4d  L%4d  Net%4d", after.wins, after.losses, after.wins - after.losses);
+	printf("  | W:%+4d L:%+4d NET:%+4d", after.wins - before.wins, after.losses - before.losses, (after.wins - after.losses) - (before.wins - before.losses));
+}
+
+#define NAME_BUFF_SIZE 16
+const char *aname(unsigned n)
+{
+	static char buff[NAME_BUFF_SIZE];
+	snprintf(buff, NAME_BUFF_SIZE, "FT_%d", n);
+	return buff;
+}
+
+const char *oname(unsigned n)
+{
+	static char buff[NAME_BUFF_SIZE];
+	snprintf(buff, NAME_BUFF_SIZE, "FT_%d", n);
+	return buff;
 }
 
 RESULTS *runCPU(AGENT *agCPU)
@@ -1135,34 +1173,79 @@ RESULTS *runCPU(AGENT *agCPU)
 
 //	auto_learn(agCPU, 0, 10);
 
-	unsigned pieces = 5;
+	unsigned pieces = 2;
 	unsigned max_turns = 10;
-	unsigned games_per_rep = 5000;
-	unsigned reps = 10;
+	unsigned games_per_rep = 10;
+	unsigned reps = 2;
 	if (reps > g_p.num_agents) reps = g_p.num_agents;
-	unsigned test_games = 1000;
+//	char op_name[16];
+//	char ag_name[16];
 
+	unsigned test_pieces = pieces;
+	unsigned test_games = 1000;
+	unsigned test_max_turns = 10;
+	
+	COMPETE_RESULTS *results = (COMPETE_RESULTS *)malloc(reps * sizeof(COMPETE_RESULTS));
+	
 	printf("NODES, BOARD_WIDTH, BOARD_HEIGHT, PIECES, MAX_TURNS, GAMES, REPS\n");
 	printf("%d, %d, %d, %d, %d, %d, %d\n", g_p.num_hidden, g_p.board_width, g_p.board_height, pieces, max_turns, games_per_rep, reps);
-	printf("initial agent, before learning:\n");
-	dump_agent(agCPU, 1, 0);
+//	printf("initial agent, before learning:\n");
+//	dump_agent(agCPU, 1, 0);
 	
+	COMPETE_RESULTS cr;
+
+	// first learn against the random agent...
 	auto_learn(agCPU, NULL, pieces, games_per_rep, max_turns);
+	
 	for (int i = 1; i < reps; i++) {
-		// save the agent weight
+		// save the current state of learning agent after i learning sessions into agent slot i [1..reps-1]
 		copy_agent(agCPU, 0, i);
-		printf("agent after %d episodes of learning:\n", i);
-		dump_agent(agCPU, i, 0);
+//		printf("agent after %d episodes of learning:\n", i);
+//		dump_agent(agCPU, i, 0);
+
+		// do a round of competition, first agent vs. RAND
+		printf("[ROUND%3d], ", i);
+		cr = compete(agCPU->wgts, aname(i), NULL, "RAND", test_pieces, test_games, test_max_turns, 0);
+		
+		// print the progress indicator if agent has competed against this agent before
+		if (i > 1) progress_indicator(cr, results[0]);
+		printf("\n");
+		
+		// save the results against this agent
+		results[0] = cr;
+
+		// repeat for all the saved agents, not including the one just saved (at i)
+		for (int j = 1; j < i; j++) {
+			printf("[ROUND%3d], ", i);
+			cr = compete(agCPU->wgts, aname(i), agCPU->wgts + j * g_p.num_wgts, oname(j), test_pieces, test_games, test_max_turns, 0);
+			if (j < (i-1)) progress_indicator(cr, results[j]);
+			printf("\n");
+			results[j] = cr;
+		}
+		
+		// do the next round of learning against the last saved agent (at i)
 		auto_learn(agCPU, agCPU->wgts + i * g_p.num_wgts, pieces, games_per_rep, max_turns);
 	}
-	char buff[16];
-	for (int i = 1; i < reps; i++) {
-		snprintf(buff, 16, "FT_%03d", i);
-		compete(agCPU->wgts, "FT_MAX", agCPU->wgts + i * g_p.num_wgts, buff, pieces, test_games, max_turns, 0);
-	}
-	snprintf(buff, 16, "FT_%03d", reps-1);
-	compete(agCPU->wgts, "FT_MAX", agCPU->wgts + (reps - 1) * g_p.num_wgts, buff, pieces, 4, max_turns, 1);
 	
+	// last round of competition
+	printf("[ROUND%3d], ", reps);
+	cr = compete(agCPU->wgts, aname(reps), NULL, "RAND", test_pieces, test_games, test_max_turns, 0);
+	if (reps > 1) progress_indicator(cr, results[0]);
+	printf("\n");
+	results[0] = cr;
+	
+	for (int j = 1; j < reps; j++) {
+		printf("[ROUND%3d], ", reps);
+		cr = compete(agCPU->wgts, aname(reps), agCPU->wgts + j * g_p.num_wgts, oname(j), test_pieces, test_games, test_max_turns, 0);
+		if (j < (reps-1)) progress_indicator(cr, results[j]);
+		printf("\n");
+		results[j] = cr;
+	}
+	
+	// show a few games of against the best saved agent
+	compete(agCPU->wgts, "FT_MAX", agCPU->wgts + (reps - 1) * g_p.num_wgts, oname(reps-1), pieces, 4, max_turns, 1);
+	
+	free(results);
 	return NULL;
 }
 

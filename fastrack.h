@@ -6,6 +6,8 @@
 //  Copyright dbelll 2010. All rights reserved.
 //
 
+#define DUMP_MOVES
+
 #define MAX_BOARD_DIMENSION 8	// maximum value for width or length of board
 
 // piece move definitions
@@ -101,11 +103,17 @@ typedef struct {
 	COMPACT_AGENT *best;				// best agent after each episode
 } RESULTS;
 
-
+typedef struct {
+	unsigned games;
+	unsigned wins;
+	unsigned losses;
+} COMPETE_RESULTS;
 
 AGENT *init_agentsCPU(PARAMS p);
 AGENT *init_agentsGPU(AGENT *agCPU);
 void dump_agentsCPU(const char *str, AGENT *agCPU, unsigned dumpW);
+void save_agent(FILE *file, const char *desription, AGENT *agCPU, PARAMS *params);
+PARAMS load_agent(FILE *file, AGENT *agCPU, char *description, unsigned descrip_size); 
 
 void freeAgentCPU(AGENT *ag);
 void freeCompactAgent(COMPACT_AGENT *ag);

@@ -6,6 +6,10 @@
 	objectVersion = 42;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		103C920412BB0A4400FE2066 /* play.c in Sources */ = {isa = PBXBuildFile; fileRef = 103C920312BB0A4400FE2066 /* play.c */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		10294C5011A1A01400AAF551 /* fastrack.cu */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cuda; path = fastrack.cu; sourceTree = "<group>"; };
 		10294C5111A1A01400AAF551 /* fastrack.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = fastrack.h; sourceTree = "<group>"; };
@@ -20,11 +24,25 @@
 		103C8DC712B821A800FE2066 /* wgts.csv */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = wgts.csv; sourceTree = "<group>"; };
 		103C8E3A12B8D51900FE2066 /* notes.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = notes.txt; sourceTree = "<group>"; };
 		103C904712BA32FB00FE2066 /* wins.csv */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = wins.csv; sourceTree = "<group>"; };
+		103C91A212BA8A3200FE2066 /* compete.csv */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = compete.csv; sourceTree = "<group>"; };
+		103C91FC12BB0A2400FE2066 /* play */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = play; sourceTree = BUILT_PRODUCTS_DIR; };
+		103C920212BB0A4400FE2066 /* play.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = play.h; sourceTree = "<group>"; };
+		103C920312BB0A4400FE2066 /* play.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = play.c; sourceTree = "<group>"; };
 		106FF7F5119EE68B000CD6C8 /* Makefile */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.make; path = Makefile; sourceTree = "<group>"; };
 		106FF80D119EE7F5000CD6C8 /* main.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = main.c; sourceTree = "<group>"; };
 		106FF828119EEF51000CD6C8 /* cuda_utils.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = cuda_utils.h; sourceTree = "<group>"; };
 		106FF829119EEF51000CD6C8 /* cuda_utils.cu */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cuda; path = cuda_utils.cu; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		103C91FA12BB0A2400FE2066 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		10294D9B11A1B93300AAF551 /* source */ = {
@@ -32,6 +50,8 @@
 			children = (
 				103C8AE912B6877200FE2066 /* main.h */,
 				106FF80D119EE7F5000CD6C8 /* main.c */,
+				103C920212BB0A4400FE2066 /* play.h */,
+				103C920312BB0A4400FE2066 /* play.c */,
 				10294C5111A1A01400AAF551 /* fastrack.h */,
 				10294C5011A1A01400AAF551 /* fastrack.cu */,
 			);
@@ -68,8 +88,17 @@
 				103C8DC712B821A800FE2066 /* wgts.csv */,
 				103C8E3A12B8D51900FE2066 /* notes.txt */,
 				103C904712BA32FB00FE2066 /* wins.csv */,
+				103C91A212BA8A3200FE2066 /* compete.csv */,
 			);
 			name = "notes and results";
+			sourceTree = "<group>";
+		};
+		103C91FD12BB0A2400FE2066 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				103C91FC12BB0A2400FE2066 /* play */,
+			);
+			name = Products;
 			sourceTree = "<group>";
 		};
 		106FF7E9119EE654000CD6C8 = {
@@ -79,6 +108,7 @@
 				103C8AEA12B687C200FE2066 /* utilities */,
 				10294D9B11A1B93300AAF551 /* source */,
 				10294D9C11A1B93D00AAF551 /* other */,
+				103C91FD12BB0A2400FE2066 /* Products */,
 			);
 			sourceTree = "<group>";
 		};
@@ -115,6 +145,25 @@
 		};
 /* End PBXLegacyTarget section */
 
+/* Begin PBXNativeTarget section */
+		103C91FB12BB0A2400FE2066 /* play */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 103C920112BB0A2500FE2066 /* Build configuration list for PBXNativeTarget "play" */;
+			buildPhases = (
+				103C91F912BB0A2400FE2066 /* Sources */,
+				103C91FA12BB0A2400FE2066 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = play;
+			productName = play;
+			productReference = 103C91FC12BB0A2400FE2066 /* play */;
+			productType = "com.apple.product-type.tool";
+		};
+/* End PBXNativeTarget section */
+
 /* Begin PBXProject section */
 		106FF7EB119EE654000CD6C8 /* Project object */ = {
 			isa = PBXProject;
@@ -129,14 +178,27 @@
 				German,
 			);
 			mainGroup = 106FF7E9119EE654000CD6C8;
+			productRefGroup = 103C91FD12BB0A2400FE2066 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
 				106FF818119EEEB0000CD6C8 /* fastrack */,
 				10294CDE11A1AF0E00AAF551 /* fastrackdebug */,
+				103C91FB12BB0A2400FE2066 /* play */,
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		103C91F912BB0A2400FE2066 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				103C920412BB0A4400FE2066 /* play.c in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
 		10294CE011A1AF0E00AAF551 /* Debug */ = {
@@ -156,6 +218,52 @@
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				GCC_ENABLE_FIX_AND_CONTINUE = NO;
 				PRODUCT_NAME = fastrack;
+				ZERO_LINK = NO;
+			};
+			name = Release;
+		};
+		103C91FF12BB0A2500FE2066 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				COPY_PHASE_STRIP = NO;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_ENABLE_FIX_AND_CONTINUE = YES;
+				GCC_MODEL_TUNING = G5;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PRECOMPILE_PREFIX_HEADER = YES;
+				GCC_PREFIX_HEADER = "$(SYSTEM_LIBRARY_DIR)/Frameworks/AppKit.framework/Headers/AppKit.h";
+				INSTALL_PATH = /usr/local/bin;
+				OTHER_LDFLAGS = (
+					"-framework",
+					Foundation,
+					"-framework",
+					AppKit,
+				);
+				PREBINDING = NO;
+				PRODUCT_NAME = play;
+			};
+			name = Debug;
+		};
+		103C920012BB0A2500FE2066 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				COPY_PHASE_STRIP = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				GCC_ENABLE_FIX_AND_CONTINUE = NO;
+				GCC_MODEL_TUNING = G5;
+				GCC_PRECOMPILE_PREFIX_HEADER = YES;
+				GCC_PREFIX_HEADER = "$(SYSTEM_LIBRARY_DIR)/Frameworks/AppKit.framework/Headers/AppKit.h";
+				INSTALL_PATH = /usr/local/bin;
+				OTHER_LDFLAGS = (
+					"-framework",
+					Foundation,
+					"-framework",
+					AppKit,
+				);
+				PREBINDING = NO;
+				PRODUCT_NAME = play;
 				ZERO_LINK = NO;
 			};
 			name = Release;
@@ -203,6 +311,15 @@
 			buildConfigurations = (
 				10294CE011A1AF0E00AAF551 /* Debug */,
 				10294CE111A1AF0E00AAF551 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		103C920112BB0A2500FE2066 /* Build configuration list for PBXNativeTarget "play" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				103C91FF12BB0A2500FE2066 /* Debug */,
+				103C920012BB0A2500FE2066 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
