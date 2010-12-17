@@ -61,7 +61,7 @@ EXECUTABLE	:= fastrack
 CUFILES		:= fastrack.cu cuda_utils.cu
 
 # CUDA dependency files
-CU_DEPS	:= main.h helpers.h rand_utils.h
+CU_DEPS	:= main.h helpers.h rand_utils.h fastrack.h
 
 # C/C++ source files (compiled with gcc / c++)
 CCFILES		:=  main.c helpers.c rand_utils.c

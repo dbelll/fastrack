@@ -115,7 +115,7 @@ unsigned not_empty(unsigned *board){ return !is_empty(board); }
 // non-zero reward ==> terminal state
 float reward(unsigned *state, unsigned *terminal)
 {
-	float reward = 0.5f;
+	float reward = 0.0f;
 	*terminal = 0;
 	if (is_empty(O_BOARD(state))){ reward = 1.0f; *terminal = 1; }
 	if (is_empty(X_BOARD(state))){ reward = 0.0f; *terminal = 1; }
@@ -988,6 +988,7 @@ COMPETE_RESULTS compete(float *ag1_wgts, const char *name1, float *ag2_wgts, con
 	return cr;
 }
 
+#define DUMP_ALL_AGENT_UPDATES
 
 // run a learning session using agent ag1 against ag2.  ag2 may be NULL which represents a random player
 // Start with a random board with start_pieces per side, or the normal starting board if start_pieces is 0
@@ -998,6 +999,9 @@ void auto_learn(AGENT *ag1, float *ag2_wgts, unsigned start_pieces, unsigned num
 		printf("***ERROR *** random agent can not learn!!!\n");
 		exit(-1);
 	}
+#ifdef DUMP_ALL_AGENT_UPDATES
+	dump_agent(ag1, 0, 1);
+#endif
 	
 #ifdef DUMP_MOVES
 	printf("auto_learning for %d games, %d turns per game...\n", num_games, turns_per_game);
@@ -1036,8 +1040,11 @@ void auto_learn(AGENT *ag1, float *ag2_wgts, unsigned start_pieces, unsigned num
 	float V = choose_move(state, ag1->wgts, hidden, out);
 	
 	update_trace(state, ag1->wgts, ag1->e, hidden, out, ag1->lambda[0]);
-//	printf("after updating trace...\n");
-//	dump_agent(ag1, 0, 1);
+
+#ifdef DUMP_ALL_AGENT_UPDATES
+	printf("after updating trace...\n");
+	dump_agent(ag1, 0, 1);
+#endif
 	
 	// loop over the number of turns
 	while (game < num_games) {
@@ -1049,13 +1056,16 @@ void auto_learn(AGENT *ag1, float *ag2_wgts, unsigned start_pieces, unsigned num
 //		printf("\n\n------- %d turns left -------\n", num_turns+1);
 //		printf("after own move, turn %d:\n", turn);
 //		dump_state(state);		
-//		printf("hidden activation values are:\n");
-//		for (int i = 0; i < g_p.num_hidden; i++) {
-//			printf(i == 0 ? "%9.4f" : ", %9.4f", hidden[i]);
-//		}
-//		printf("\n");
-//		printf("output value is %9.4f\n", out[0]);
-//		dump_agent(agCPU, 0, 1);
+
+#ifdef DUMP_ALL_AGENT_UPDATES
+		printf("hidden activation values are:\n");
+		for (int i = 0; i < g_p.num_hidden; i++) {
+			printf(i == 0 ? "%9.4f" : ", %9.4f", hidden[i]);
+		}
+		printf("\n");
+		printf("output value is %9.4f\n", out[0]);
+#endif
+
 		
 
 		float reward = (ag2_wgts	? take_action(state, ag2_wgts, hidden, out, &terminal) 
@@ -1109,21 +1119,23 @@ void auto_learn(AGENT *ag1, float *ag2_wgts, unsigned start_pieces, unsigned num
 //		printf("choosing next move...\n");
 		float V_prime = choose_move(state, ag1->wgts, hidden, out);
 		float delta = reward + (terminal ? 0.0f : (g_p.gamma * V_prime)) - V;
-//		printf("delta = %9.4f\n", delta);
 //		printf("updating wgts...\n");
 		update_wgts(ag1->alpha[0], delta, ag1->wgts, ag1->e);
 
-//		printf("after updating weights:\n");
-//		dump_agent(agCPU, 0, 1);
+#ifdef DUMP_ALL_AGENT_UPDATES
+		printf("reward = %9.4f, V_prime = %9.4f, V = %9.4f, delta = %9.4f\n", reward, V_prime, V, delta);
+		printf("after updating weights:\n");
+		dump_agent(ag1, 0, 1);
+#endif
 
 		if (terminal) reset_trace(ag1->e);
 //		printf("updating trace...\n");
 		update_trace(state, ag1->wgts, ag1->e, hidden, out, ag1->lambda[0]);
 
-//		printf("after updating trace:\n");
-//		dump_agent(ag1, 0, 1);
-
-//		dump_agent(agCPU, 0, 1);
+#ifdef DUMP_ALL_AGENT_UPDATES
+		printf("after updating trace:\n");
+		dump_agent(ag1, 0, 1);
+#endif
 		
 		V = V_prime;
 	}
@@ -1173,17 +1185,17 @@ RESULTS *runCPU(AGENT *agCPU)
 
 //	auto_learn(agCPU, 0, 10);
 
-	unsigned pieces = 2;
-	unsigned max_turns = 10;
-	unsigned games_per_rep = 10;
-	unsigned reps = 2;
+	unsigned pieces = 5;
+	unsigned max_turns = 20;
+	unsigned games_per_rep = 1;
+	unsigned reps = 1;
 	if (reps > g_p.num_agents) reps = g_p.num_agents;
 //	char op_name[16];
 //	char ag_name[16];
 
 	unsigned test_pieces = pieces;
-	unsigned test_games = 1000;
-	unsigned test_max_turns = 10;
+	unsigned test_games = 000;
+	unsigned test_max_turns = 20;
 	
 	COMPETE_RESULTS *results = (COMPETE_RESULTS *)malloc(reps * sizeof(COMPETE_RESULTS));
 	
