@@ -1,0 +1,37 @@
+Today's Goals
+
+
+Clean-up CPU version of code
+
+	Use Random number seeds
+	
+	Parameterize all control values
+		compete against self/others probability
+		learn session length
+		testing period length
+		testing parameters
+	
+	Save agents to file
+
+
+Processing
+
+	init agents
+	
+	main loop
+		learn
+			determine learning parameters
+			determine opponent
+			learn
+			update opponent	
+			repeat
+		test
+			
+		report stats
+		replicate/vary
+		repeat
+
+
+GPU Code
+	check
+	optimize

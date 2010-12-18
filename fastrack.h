@@ -6,7 +6,9 @@
 //  Copyright dbelll 2010. All rights reserved.
 //
 
-#define DUMP_MOVES
+//#define DUMP_MOVES
+//#define DUMP_ALL_AGENT_UPDATES
+#define SHOW_SAMPLE_GAMES_AFTER_LEARNING 4
 
 #define MAX_BOARD_DIMENSION 8	// maximum value for width or length of board
 

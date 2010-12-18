@@ -988,7 +988,6 @@ COMPETE_RESULTS compete(float *ag1_wgts, const char *name1, float *ag2_wgts, con
 	return cr;
 }
 
-#define DUMP_ALL_AGENT_UPDATES
 
 // run a learning session using agent ag1 against ag2.  ag2 may be NULL which represents a random player
 // Start with a random board with start_pieces per side, or the normal starting board if start_pieces is 0
@@ -1139,8 +1138,8 @@ void auto_learn(AGENT *ag1, float *ag2_wgts, unsigned start_pieces, unsigned num
 		
 		V = V_prime;
 	}
-	printf("learning session is over...\n");
-	printf("%7d, %7d, %7d\n", wins, losses, wins-losses);
+//	printf("learning session is over...\n");
+//	printf("%7d, %7d, %7d\n", wins, losses, wins-losses);
 	free(state);
 	free(hidden);
 	free(out);
@@ -1160,7 +1159,7 @@ void progress_indicator(COMPETE_RESULTS after, COMPETE_RESULTS before)
 {
 //	printf("\nbefore: W%4d  L%4d  Net%4d", before.wins, before.losses, before.wins - before.losses);
 //	printf(" after: W%4d  L%4d  Net%4d", after.wins, after.losses, after.wins - after.losses);
-	printf("  | W:%+4d L:%+4d NET:%+4d", after.wins - before.wins, after.losses - before.losses, (after.wins - after.losses) - (before.wins - before.losses));
+	printf("  ,  W:%+4d L:%+4d NET:%+4d", after.wins - before.wins, after.losses - before.losses, (after.wins - after.losses) - (before.wins - before.losses));
 }
 
 #define NAME_BUFF_SIZE 16
@@ -1183,18 +1182,14 @@ RESULTS *runCPU(AGENT *agCPU)
 	// test with agent 0
 //	dump_agent(agCPU, 0, 0);
 
-//	auto_learn(agCPU, 0, 10);
-
 	unsigned pieces = 5;
 	unsigned max_turns = 20;
-	unsigned games_per_rep = 1;
-	unsigned reps = 1;
+	unsigned games_per_rep = 100;
+	unsigned reps = 2000;
 	if (reps > g_p.num_agents) reps = g_p.num_agents;
-//	char op_name[16];
-//	char ag_name[16];
 
 	unsigned test_pieces = pieces;
-	unsigned test_games = 000;
+	unsigned test_games = 10;
 	unsigned test_max_turns = 20;
 	
 	COMPETE_RESULTS *results = (COMPETE_RESULTS *)malloc(reps * sizeof(COMPETE_RESULTS));
@@ -1204,59 +1199,151 @@ RESULTS *runCPU(AGENT *agCPU)
 //	printf("initial agent, before learning:\n");
 //	dump_agent(agCPU, 1, 0);
 	
+
+	// get a new set of agents and re-run with lambda = 0.0f
+	char *base_name = "20TURNS";
+	g_p.alpha = 0.20;
+	char *mod_name = "10TURNS";
+	AGENT *agCPU2 = init_agentsCPU(g_p);
+
+
 	COMPETE_RESULTS cr;
+	COMPETE_RESULTS totcr;
 
 	// first learn against the random agent...
 	auto_learn(agCPU, NULL, pieces, games_per_rep, max_turns);
 	
 	for (int i = 1; i < reps; i++) {
+//		totcr.wins = totcr.losses = 0;
 		// save the current state of learning agent after i learning sessions into agent slot i [1..reps-1]
 		copy_agent(agCPU, 0, i);
 //		printf("agent after %d episodes of learning:\n", i);
 //		dump_agent(agCPU, i, 0);
 
 		// do a round of competition, first agent vs. RAND
-		printf("[ROUND%3d], ", i);
-		cr = compete(agCPU->wgts, aname(i), NULL, "RAND", test_pieces, test_games, test_max_turns, 0);
-		
-		// print the progress indicator if agent has competed against this agent before
-		if (i > 1) progress_indicator(cr, results[0]);
-		printf("\n");
-		
-		// save the results against this agent
-		results[0] = cr;
-
-		// repeat for all the saved agents, not including the one just saved (at i)
-		for (int j = 1; j < i; j++) {
-			printf("[ROUND%3d], ", i);
-			cr = compete(agCPU->wgts, aname(i), agCPU->wgts + j * g_p.num_wgts, oname(j), test_pieces, test_games, test_max_turns, 0);
-			if (j < (i-1)) progress_indicator(cr, results[j]);
-			printf("\n");
-			results[j] = cr;
-		}
-		
+//		printf("[ROUND%3d], ", i);
+//		cr = compete(agCPU->wgts, aname(i), NULL, "RAND", test_pieces, test_games, test_max_turns, 0);
+//		// print the progress indicator if agent has competed against this agent before
+//		if (i > 1){
+//			progress_indicator(cr, results[0]);
+//			totcr.wins += cr.wins - results[0].wins;
+//			totcr.losses += cr.losses - results[0].losses;
+//		}
+//		printf("\n");
+//		
+//		// save the results against this agent
+//		results[0] = cr;
+//
+//		// repeat for all the saved agents, not including the one just saved (at i)
+//		for (int j = 1; j < i; j++) {
+//			printf("[ROUND%3d], ", i);
+//			cr = compete(agCPU->wgts, aname(i), agCPU->wgts + j * g_p.num_wgts, oname(j), test_pieces, test_games, test_max_turns, 0);
+////			printf("\n            ");
+////			cr = compete(agCPU->wgts + j*g_p.num_wgts, oname(j), agCPU->wgts, aname(i), test_pieces, test_games, test_max_turns, 0);
+//			if (j < (i-1)){
+//				progress_indicator(cr, results[j]);
+//				totcr.wins += cr.wins - results[j].wins;
+//				totcr.losses += cr.losses - results[j].losses;
+//			}
+//			printf("\n");
+//			results[j] = cr;
+//		}
+//		printf("                                              total progress is W:%+4d L:%+4d NET:%+4d\n", totcr.wins, totcr.losses, totcr.wins - totcr.losses);
 		// do the next round of learning against the last saved agent (at i)
 		auto_learn(agCPU, agCPU->wgts + i * g_p.num_wgts, pieces, games_per_rep, max_turns);
 	}
 	
 	// last round of competition
-	printf("[ROUND%3d], ", reps);
-	cr = compete(agCPU->wgts, aname(reps), NULL, "RAND", test_pieces, test_games, test_max_turns, 0);
-	if (reps > 1) progress_indicator(cr, results[0]);
-	printf("\n");
-	results[0] = cr;
+//	printf("[ROUND%3d], ", reps);
+//	cr = compete(agCPU->wgts, aname(reps), NULL, "RAND", test_pieces, test_games, test_max_turns, 0);
+//	if (reps > 1) progress_indicator(cr, results[0]);
+//	printf("\n");
+//	results[0] = cr;
 	
-	for (int j = 1; j < reps; j++) {
-		printf("[ROUND%3d], ", reps);
-		cr = compete(agCPU->wgts, aname(reps), agCPU->wgts + j * g_p.num_wgts, oname(j), test_pieces, test_games, test_max_turns, 0);
-		if (j < (reps-1)) progress_indicator(cr, results[j]);
-		printf("\n");
-		results[j] = cr;
+//	for (int j = 1; j < reps; j++) {
+//		printf("[ROUND%3d], ", reps);
+//		cr = compete(agCPU->wgts, aname(reps), agCPU->wgts + j * g_p.num_wgts, oname(j), test_pieces, test_games, test_max_turns, 0);
+//		printf("\n            ");
+//		cr = compete(agCPU->wgts + j*g_p.num_wgts, oname(j), agCPU->wgts, aname(reps), test_pieces, test_games, test_max_turns, 0);
+//		if (j < (reps-1)) progress_indicator(cr, results[j]);
+//		printf("\n");
+//		results[j] = cr;
+//	}
+
+
+
+	max_turns = 40;
+
+
+
+	// first learn against the random agent...
+	auto_learn(agCPU2, NULL, pieces, games_per_rep, max_turns);
+	
+	for (int i = 1; i < reps; i++) {
+//		totcr.wins = totcr.losses = 0;
+		// save the current state of learning agent after i learning sessions into agent slot i [1..reps-1]
+		copy_agent(agCPU2, 0, i);
+//		printf("agent after %d episodes of learning:\n", i);
+//		dump_agent(agCPU, i, 0);
+
+//		// do a round of competition, first agent vs. RAND
+//		printf("[ROUND%3d], ", i);
+//		cr = compete(agCPU2->wgts, aname(i), NULL, "RAND", test_pieces, test_games, test_max_turns, 0);
+//		// print the progress indicator if agent has competed against this agent before
+//		if (i > 1){
+//			progress_indicator(cr, results[0]);
+//			totcr.wins += cr.wins - results[0].wins;
+//			totcr.losses += cr.losses - results[0].losses;
+//		}
+//		printf("\n");
+//		
+//		// save the results against this agent
+//		results[0] = cr;
+//
+//		// repeat for all the saved agents, not including the one just saved (at i)
+//		for (int j = 1; j < i; j++) {
+//			printf("[ROUND%3d], ", i);
+//			cr = compete(agCPU2->wgts, aname(i), agCPU2->wgts + j * g_p.num_wgts, oname(j), test_pieces, test_games, test_max_turns, 0);
+//			if (j < (i-1)){
+//				progress_indicator(cr, results[j]);
+//				totcr.wins += cr.wins - results[j].wins;
+//				totcr.losses += cr.losses - results[j].losses;
+//			}
+//			printf("\n");
+//			results[j] = cr;
+//		}
+//		printf("                                              total progress is W:%+4d L:%+4d NET:%+4d\n", totcr.wins, totcr.losses, totcr.wins - totcr.losses);
+//		// do the next round of learning against the last saved agent (at i)
+		auto_learn(agCPU2, agCPU2->wgts + i * g_p.num_wgts, pieces, games_per_rep, max_turns);
 	}
 	
-	// show a few games of against the best saved agent
-	compete(agCPU->wgts, "FT_MAX", agCPU->wgts + (reps - 1) * g_p.num_wgts, oname(reps-1), pieces, 4, max_turns, 1);
+	// last round of competition
+//	printf("[ROUND%3d], ", reps);
+//	cr = compete(agCPU2->wgts, aname(reps), NULL, "RAND", test_pieces, test_games, test_max_turns, 0);
+//	if (reps > 1) progress_indicator(cr, results[0]);
+//	printf("\n");
+//	results[0] = cr;
+//	
+//	for (int j = 1; j < reps; j++) {
+//		printf("[ROUND%3d], ", reps);
+//		cr = compete(agCPU2->wgts, aname(reps), agCPU2->wgts + j * g_p.num_wgts, oname(j), test_pieces, test_games, test_max_turns, 0);
+//		if (j < (reps-1)) progress_indicator(cr, results[j]);
+//		printf("\n");
+//		results[j] = cr;
+//	}
+
+	test_games = 1000;
 	
+	// final competition between the two last agents
+	compete(agCPU->wgts, base_name, agCPU2->wgts, mod_name, test_pieces, test_games, test_max_turns, 0);
+	printf("\n");
+	compete(agCPU2->wgts, mod_name, agCPU->wgts, base_name, test_pieces, test_games, test_max_turns, 0);
+
+	
+	// show a few games of against the best saved agent
+#ifdef SHOW_SAMPLE_GAMES_AFTER_LEARNING
+	compete(agCPU->wgts, base_name, agCPU2->wgts, mod_name, pieces, SHOW_SAMPLE_GAMES_AFTER_LEARNING, max_turns, 1);
+#endif
 	free(results);
 	return NULL;
 }
