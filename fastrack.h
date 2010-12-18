@@ -8,7 +8,7 @@
 
 //#define DUMP_MOVES
 //#define DUMP_ALL_AGENT_UPDATES
-#define SHOW_SAMPLE_GAMES_AFTER_LEARNING 4
+//#define SHOW_SAMPLE_GAMES_AFTER_LEARNING 4
 
 #define MAX_BOARD_DIMENSION 8	// maximum value for width or length of board
 
@@ -32,6 +32,10 @@ typedef struct {
 	// game parameters
 	unsigned board_width;		// board width (power of 2)
 	unsigned board_height;		// board height (power of 2)
+	unsigned num_pieces;		// pieces per side, random location at start of game,
+								// value of 0 means used fixed starting position of first row
+								// filled for each player
+	unsigned max_turns;			// maximum turns per game
 	unsigned seed;				// seed value used to generate global seeds (which are then
 								// used to generate each agents seeds)
 	// agent parameters
@@ -45,9 +49,10 @@ typedef struct {
 	float gamma;				// default discount rate
 	float lambda;				// default lambda
 	
-	unsigned num_agents;		// number of agents in population (power of 2)
-	unsigned episode_length;	// number of time steps in the learning period (power of 2)
-	unsigned num_episodes;		// number of episodes in this run
+	unsigned num_agents;		// number of agents in population 
+	unsigned num_sessions;		// number of learning sessions with num_agents episodes
+	unsigned episode_length;	// number of time steps in each learning episode
+	unsigned warmup_length;		// number of time steps for initial training against RAND
 	
 	unsigned run_on_CPU;		// flags
 	unsigned run_on_GPU;
@@ -55,21 +60,12 @@ typedef struct {
 	// calculated values
 	unsigned board_size;		// board_width * board_height
 	unsigned state_size;		// 2 * board_size
-//	unsigned lg_bw;				// lg(board_width)
-//	unsigned lg_bh;				// lg(board_height)
-//	unsigned lg_ag;				// lg(num_agents);
-//	unsigned board_bits;		// = board_size, bits needed to encode one player's position
-//	unsigned board_ints;		// 1 + (board_bits-1) / 32
-								//    = unsigned ints needed to encode one player's position
-//	unsigned board_unused;		// hi-order bits not used in the highest int in teh board 
-								//		= 32 * board_ints - board_bits
-//	unsigned state_size;		// 2 * board_ints
-								//  = number of unsigned ints used to encode a state
-//	unsigned num_inputs;		// number of input nodes in nn = state_bits
 	unsigned num_wgts;			// num_hidden * (2*board_size + 3) = space used for weight array
 								// this value is the stride between agent's weight blocks
 	unsigned num_agent_floats;	// (2*alloc_wgts + 3) = total size of agent float data
 								// (wgts and e and  alpha, epsilon, and lambda)
+	unsigned timesteps;			// num_sessions * num_agents * episode_length
+	unsigned agent_timesteps;	// num_agents * timesteps
 	
 } PARAMS;
 
@@ -109,7 +105,7 @@ typedef struct {
 	unsigned games;
 	unsigned wins;
 	unsigned losses;
-} COMPETE_RESULTS;
+} WON_LOSS;
 
 AGENT *init_agentsCPU(PARAMS p);
 AGENT *init_agentsGPU(AGENT *agCPU);

@@ -19,17 +19,18 @@ Processing
 	init agents
 	
 	main loop
-		learn
-			determine learning parameters
-			determine opponent
-			learn
-			update opponent	
-			repeat
-		test
+	
+		learning session
+			determine parameters for this learning session
+			loop through all opponents
+				learn against opponent for one episode
+			next opponent	
+		
+		evaluate agents
+			report stats
+			replicate/vary
 			
-		report stats
-		replicate/vary
-		repeat
+	repeat main loop for total session count
 
 
 GPU Code

@@ -58,13 +58,13 @@
 EXECUTABLE	:= fastrack
 
 # Cuda source files (compiled with cudacc)
-CUFILES		:= fastrack.cu cuda_utils.cu
+CUFILES		:= fastrack.cu cuda_utils.cu cuda_rand.cu
 
 # CUDA dependency files
 CU_DEPS	:= main.h helpers.h rand_utils.h fastrack.h
 
 # C/C++ source files (compiled with gcc / c++)
-CCFILES		:=  main.c helpers.c rand_utils.c
+CCFILES		:=  main.c helpers.c rand_utils.c misc_utils.c
 
 # additional includes
 #INCLUDES = -I/home/dbelll/cuda_libraries/

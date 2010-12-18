@@ -46,26 +46,29 @@ void display_help()
 void dump_params(PARAMS p)
 {
 	printf("game parameters:\n");
-	printf("   seed         %10d\n", p.seed);
+	printf("   seed          %10d\n", p.seed);
 	printf("   board          (%3d x%3d)\n", p.board_width, p.board_height);
-	printf("   board_size      %7d\n", p.board_size);
-	printf("   state_size      %7d\n", p.state_size);
+	printf("   num_pieces       %7d\n", p.num_pieces);
+	printf("   max_turns		%7d\n", p.max_turns);
+	printf("   board_size       %7d\n", p.board_size);
+	printf("   state_size       %7d\n", p.state_size);
 	printf("agent parameters:\n");
-	printf("   num_hidden      %7d\n", p.num_hidden);
-	printf("   num_wgts		   %7d\n", p.num_wgts);
+	printf("   num_hidden       %7d\n", p.num_hidden);
+	printf("   num_wgts		    %7d\n", p.num_wgts);
 	printf("   num_agent_floats %7d\n", p.num_agent_floats);
-	printf("   init_wgt_min    %7.4f\n", p.init_wgt_min);
-	printf("   init_wgt_max    %7.4f\n", p.init_wgt_max);
+	printf("   init_wgt_min     %7.4f\n", p.init_wgt_min);
+	printf("   init_wgt_max     %7.4f\n", p.init_wgt_max);
 	printf("learning parameters:\n");
-	printf("   num_agents      %7d\n", p.num_agents);
-	printf("   episode_length  %7d\n", p.episode_length);
-	printf("   num_episodes    %7d\n", p.num_episodes);
-	printf("   alpha           %7.4f\n", p.alpha);
-	printf("   epsilon         %7.4f\n", p.epsilon);
-	printf("   gamma           %7.4f\n", p.gamma);
-	printf("   lambda          %7.4f\n", p.lambda);
-	printf("   run on CPU?     %s\n", p.run_on_CPU ? "TRUE" : "FALSE");
-	printf("   run on GPU?     %s\n", p.run_on_GPU ? "TRUE" : "FALSE");
+	printf("   num_agents       %7d\n", p.num_agents);
+	printf("   num_sessions     %7d\n", p.num_sessions);
+	printf("   episode_length   %7d\n", p.episode_length);
+	printf("   warmup_length    %7d\n", p.warmup_length);
+	printf("   alpha            %7.4f\n", p.alpha);
+	printf("   epsilon          %7.4f\n", p.epsilon);
+	printf("   gamma            %7.4f\n", p.gamma);
+	printf("   lambda           %7.4f\n", p.lambda);
+	printf("   run on CPU?      %s\n", p.run_on_CPU ? "TRUE" : "FALSE");
+	printf("   run on GPU?      %s\n", p.run_on_GPU ? "TRUE" : "FALSE");
 }
 
 // read parameters from command line (or use default values) and print the header for this run
@@ -78,18 +81,19 @@ PARAMS read_params(int argc, const char **argv)
 	PARAMS p;
 	if (PARAM_PRESENT("HELP")) { display_help(); exit(0); }
 
-	unsigned bs = GET_PARAM("BOARD_SIZE", 4004);
+	p.seed = GET_PARAM("SEED", 1000);
+	unsigned bs = GET_PARAM("BOARD_SIZE", 4004);		// one integer = width * 1000 + height
 	p.board_width = bs / 1000;
 	p.board_height = bs % 1000;
 	if (p.board_width > MAX_BOARD_DIMENSION || p.board_height > MAX_BOARD_DIMENSION) {
 		printf("***ERROR*** Board size (%d x %d) exceeds maximum allowable dimensions\n", p.board_width, p.board_height); exit(-1);
 	}
+	p.num_pieces = GET_PARAM("NUM_PIECES", p.board_width);
+	p.max_turns = GET_PARAM("MAX_TURNS", 10);
 	p.board_size = p.board_width * p.board_height;	// number of cells on the board
 	p.state_size = 2 * p.board_size;
 	
-	p.seed = GET_PARAM("SEED", 1000);
 	p.num_hidden = GET_PARAM("NUM_HIDDEN", 32);
-	
 	p.init_wgt_min = GET_PARAM("INIT_WGT_MIN", -.1);
 	p.init_wgt_max = GET_PARAM("INIT_WGT_MAX", .1);
 	
@@ -99,9 +103,8 @@ PARAMS read_params(int argc, const char **argv)
 	p.lambda = GET_PARAMF("LAMBDA", .50f);
 	
 	p.num_agents = GET_PARAM("NUM_AGENTS", 64);
-	
+	p.num_sessions = GET_PARAM("NUM_SESSIONS", 16);	
 	p.episode_length = GET_PARAM("EPISODE_LENGTH", 256);
-	p.num_episodes = GET_PARAM("EPISODE_LENGTH", 16);
 	
 	p.run_on_CPU = PARAM_PRESENT("CPU");
 	p.run_on_GPU = PARAM_PRESENT("GPU");
@@ -113,15 +116,12 @@ PARAMS read_params(int argc, const char **argv)
 	p.num_wgts = p.num_hidden * (2 * p.board_size + 3);	// number of weights for one agent
 	p.num_agent_floats = (2*p.num_wgts + 3);	// total number of float values for an agent
 												// (wgts, e, alpha, epsilon, lambda)
+	p.timesteps = p.num_sessions * p.num_agents * p.episode_length;
+	p.agent_timesteps = p.timesteps * p.num_agents;
 	
-	printf("[FASTRACK][BOARD_SIZE %06d][SEED%10d][NUM_HIDDEN%4d][INIT_WGT_MIN%7.4f][INIT_WGT_MAX%7.4f][ALPHA%7.4f][EPSILON%7.4f][GAMMA%7.4f][LAMBDA%7.4f][NUM_AGENTS%7d][EPISODE_LENGTH%7d][NUM_EPISODES%7d]\n", 1000*p.board_width + p.board_height, p.seed, p.num_hidden, p.init_wgt_min, p.init_wgt_max, p.alpha, p.epsilon, p.gamma, p.lambda, p.num_agents, p.episode_length, p.num_episodes);
+	printf("[FASTRACK][BOARD_SIZE %06d][NUM_PIECES %3d][MAX_TURNS %3d][SEED%10d][NUM_HIDDEN%4d][INIT_WGT_MIN%7.4f][INIT_WGT_MAX%7.4f][ALPHA%7.4f][EPSILON%7.4f][GAMMA%7.4f][LAMBDA%7.4f][NUM_AGENTS%7d][NUM_SESSIONS%7d][EPISODE_LENGTH%7d][WARMUP_LENGTH%7d]\n", 1000*p.board_width + p.board_height, p.num_pieces, p.max_turns, p.seed, p.num_hidden, p.init_wgt_min, p.init_wgt_max, p.alpha, p.epsilon, p.gamma, p.lambda, p.num_agents, p.num_sessions, p.episode_length, p.warmup_length);
 
-	// print flags
-//	if (p.share_compete) printf("[SHARE_COMPETE]");
-//	if (p.share_fitness) printf("[SHARE_FITNESS]");
-	//	if (p.share_always) printf("[SHARE_ALWAYS]");
 	printf("\n");
-	
 	
 	return p;
 }
