@@ -12,6 +12,17 @@
 
 #define MAX_BOARD_DIMENSION 8	// maximum value for width or length of board
 
+#define LEARNING_LOG_FILE "standings.csv"
+#define AGENT_FILE_OUT "knight_out.agent"
+#define AGENT_FILE_CHAMP "knight57n4v08.agent"
+#define CHAMP_GAMES 500
+
+#define REWARD_WIN 1.00f
+#define REWARD_LOSS 0.00f
+#define REWARD_TIME_LIMIT 0.50f
+
+#define ALPHA_HALF_LIFE 20
+
 // piece move definitions
 #define MOVES_KNIGHT {{1, 2}, {2, 1}, {2, -1}, {1, -2}, {-1, -2}, {-2, -1}, {-2, 1}, {-1, 2}}
 #define MOVES_ONE_MULTI {{0, 1}, {1, 1}, {1, 0}, {1, -1}, {0, -1}, {-1, -1}, {-1, 0}, {-1, 1}}
@@ -24,8 +35,15 @@
 
 #define MAX_MOVES 8			// the maximum number of possible moves in the piece move definitions
 
+// macro for executing statement if variable show is true
+// use before printf or other output statements to only print when show is TRUE:
+// eg:		SHOW dump_state(state, turn, 1);
+#define SHOW if(show)
+
 #define X_BOARD(state) (state)
 #define O_BOARD(state) ((state) + g_p.board_size)
+
+#define NAME_BUFF_SIZE 16	// buffer size for agent names
 
 // PARAMS structure is a convenient place to hold all dynamic parameters
 typedef struct {
@@ -77,10 +95,10 @@ typedef struct{
 	unsigned *seeds;	// random number seeds for each agent (num_agents * 4)
 	float *wgts;		// nn wgts for each agent (num_agents * num_wgts)
 	float *e;			// eligibility trace (num_agents * num_wgts)
+	float *saved_wgts;	// saved copy of weights
 	float *alpha;		// agent-specific alpha value (num_agents)
 	float *epsilon;		// agent-specific epsilon value (num_agents)
 	float *lambda;		// agent-specific lambda value (num_agents)
-	
 } AGENT;
 
 typedef struct {
@@ -102,16 +120,15 @@ typedef struct {
 } RESULTS;
 
 typedef struct {
-	unsigned games;
-	unsigned wins;
-	unsigned losses;
+	int agent;
+	int games;
+	int wins;
+	int losses;
 } WON_LOSS;
 
 AGENT *init_agentsCPU(PARAMS p);
 AGENT *init_agentsGPU(AGENT *agCPU);
 void dump_agentsCPU(const char *str, AGENT *agCPU, unsigned dumpW);
-void save_agent(FILE *file, const char *desription, AGENT *agCPU, PARAMS *params);
-PARAMS load_agent(FILE *file, AGENT *agCPU, char *description, unsigned descrip_size); 
 
 void freeAgentCPU(AGENT *ag);
 void freeCompactAgent(COMPACT_AGENT *ag);

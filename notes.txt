@@ -1,18 +1,10 @@
 Today's Goals
 
+get rid of ranf() calls in compete and auto_learn
 
 Clean-up CPU version of code
 
-	Use Random number seeds
-	
-	Parameterize all control values
-		compete against self/others probability
-		learn session length
-		testing period length
-		testing parameters
-	
-	Save agents to file
-
+		Do program for straight competition among a list of saved agents
 
 Processing
 

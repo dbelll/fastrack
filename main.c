@@ -24,19 +24,22 @@ void display_help()
 	printf("fastrack parameters:\n");
 	printf("  --SEED                a number from 0 to 15 for varying random numbers\n");
 	printf("  --BOARD_SIZE			board size, encoded as 1000 * width + height\n");
-	
+	printf("  --NUM_PIECES			number of random pieces for each side, 0 ==> one row for each player");
+	printf("  --MAX_TURNS			maximum turns per game");
+
 	printf("  --NUM_HIDDEN          number of hidden nodes in agent nn");
 	printf("  --INIT_THETA_MIN		minimum of range of possible initial weight values\n");
 	printf("  --INIT_THETA_MAX		maximum of range of possible initial weight values\n");
-
+	
+	printf("  --NUM_AGENTS			number of agents\n");
+	printf("  --NUM_SESSIONS        number of learning sessions, each session is round-robin");
+	printf("  --EPISODE_LENGTH      number of turns for learning against each opponent in each episode\n");
+	printf("  --WARMUP_LENGTH	    number of turns for initial learning vs. random-playing agent\n");
 	printf("  --ALPHA               float value for alpha, the learning rate parameter\n");
 	printf("  --EPSILON             float value for epsilon, the exploration parameter\n");
 	printf("  --GAMMA               float value for gamma, the discount factor\n");
 	printf("  --LAMBDA              float value for lambda, the trace decay factor\n");
-	
-	printf("  --NUM_AGENTS			number of agents\n");
-	printf("  --EPISODE_LENGTH      length of each learning episode\n");
-	printf("  --NUM_EPISODES	    number of learning episodes\n");
+
 	printf("  --CPU                 run on CPU");
 	printf("  --GPU                 run on CPU");
 	printf("  --HELP                print this help message\n");
@@ -105,6 +108,7 @@ PARAMS read_params(int argc, const char **argv)
 	p.num_agents = GET_PARAM("NUM_AGENTS", 64);
 	p.num_sessions = GET_PARAM("NUM_SESSIONS", 16);	
 	p.episode_length = GET_PARAM("EPISODE_LENGTH", 256);
+	p.warmup_length = GET_PARAM("EPISODE_LENGTH", 256);
 	
 	p.run_on_CPU = PARAM_PRESENT("CPU");
 	p.run_on_GPU = PARAM_PRESENT("GPU");
@@ -114,8 +118,8 @@ PARAMS read_params(int argc, const char **argv)
 	}
 	
 	p.num_wgts = p.num_hidden * (2 * p.board_size + 3);	// number of weights for one agent
-	p.num_agent_floats = (2*p.num_wgts + 3);	// total number of float values for an agent
-												// (wgts, e, alpha, epsilon, lambda)
+	p.num_agent_floats = (3*p.num_wgts + 3);	// total number of float values for an agent
+												// (wgts, e, saved_wgts, alpha, epsilon, lambda)
 	p.timesteps = p.num_sessions * p.num_agents * p.episode_length;
 	p.agent_timesteps = p.timesteps * p.num_agents;
 	
