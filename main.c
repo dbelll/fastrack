@@ -108,7 +108,7 @@ PARAMS read_params(int argc, const char **argv)
 	p.num_agents = GET_PARAM("NUM_AGENTS", 64);
 	p.num_sessions = GET_PARAM("NUM_SESSIONS", 16);	
 	p.episode_length = GET_PARAM("EPISODE_LENGTH", 256);
-	p.warmup_length = GET_PARAM("EPISODE_LENGTH", 256);
+	p.warmup_length = GET_PARAM("WARMUP_LENGTH", 256);
 	
 	p.run_on_CPU = PARAM_PRESENT("CPU");
 	p.run_on_GPU = PARAM_PRESENT("GPU");

@@ -15,7 +15,7 @@
 #define LEARNING_LOG_FILE "standings.csv"
 #define AGENT_FILE_OUT "knight_out.agent"
 #define AGENT_FILE_CHAMP "knight57n4v08.agent"
-#define CHAMP_GAMES 500
+#define CHAMP_GAMES 1000
 
 #define REWARD_WIN 1.00f
 #define REWARD_LOSS 0.00f

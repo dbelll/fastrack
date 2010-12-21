@@ -1390,6 +1390,10 @@ int wl_compare(const void *p1, const void *p2)
 	return result; 
 }
 
+float winpct(WON_LOSS wl)
+{
+	return 0.5f * (1.0f + (float)(wl.wins - wl.losses)/(float)wl.games);
+}
 
 void print_standings(WON_LOSS *standings, WON_LOSS *vsChamp)
 {
@@ -1398,15 +1402,22 @@ void print_standings(WON_LOSS *standings, WON_LOSS *vsChamp)
 		printf("   %4d games vs Champ\n", CHAMP_GAMES);
 
 		WON_LOSS totChamp = {0, 0, 0, 0};
+		WON_LOSS totStand = {0, 0, 0, 0};
 		
 		for (int i = 0; i < g_p.num_agents; i++) {
-			printf("agent%4d  %4d %4d %4d  %5.3f", standings[i].agent, standings[i].games, standings[i].wins, standings[i].losses, 0.5f * (1.0f + (float)(standings[i].wins - standings[i].losses) / (float)standings[i].games));
+//			printf("agent%4d  %4d %4d %4d  %5.3f", standings[i].agent, standings[i].games, standings[i].wins, standings[i].losses, 0.5f * (1.0f + (float)(standings[i].wins - standings[i].losses) / (float)standings[i].games));
+			printf("agent%4d  %4d %4d %4d  %5.3f", standings[i].agent, standings[i].games, standings[i].wins, standings[i].losses, winpct(standings[i]));
+			
+			totStand.games += standings[i].games;
+			totStand.wins += standings[i].wins;
+			totStand.losses += standings[i].losses;
+			
 			printf("  (%4d-%4d)    %+5d\n", vsChamp[standings[i].agent].wins,vsChamp[standings[i].agent].losses, vsChamp[standings[i].agent].wins - vsChamp[standings[i].agent].losses);
 			totChamp.games += vsChamp[standings[i].agent].games;
 			totChamp.wins += vsChamp[standings[i].agent].wins;
 			totChamp.losses += vsChamp[standings[i].agent].losses;
 		}
-		printf("               average vs champ: (%5.1f-%5.1f)   %+5.1f\n", (float)totChamp.wins / (float)g_p.num_agents, (float)totChamp.losses / (float)g_p.num_agents, (float)(totChamp.wins-totChamp.losses) / (float)g_p.num_agents);
+		printf(" avg      %5d%5d%5d  %5.3f (%5.1f-%5.1f)   %+5.1f\n", totStand.games, totStand.wins, totStand.losses, winpct(totStand), (float)totChamp.wins / (float)g_p.num_agents, (float)totChamp.losses / (float)g_p.num_agents, (float)(totChamp.wins-totChamp.losses) / (float)g_p.num_agents);
 }
 
 RESULTS *runCPU(AGENT *agCPU)
@@ -1501,21 +1512,22 @@ RESULTS *runCPU(AGENT *agCPU)
 			
 		}
 		
-		// print standings
-		qsort(standings, g_p.num_agents, sizeof(WON_LOSS), wl_compare);
-		printf(    "             G    W    L    PCT");
-		printf("   %4d games vs Champ\n", CHAMP_GAMES);
+		print_standings(standings, vsChamp);
 
-		WON_LOSS totChamp = {0, 0, 0, 0};
-		
-		for (int i = 0; i < g_p.num_agents; i++) {
-			printf("agent%4d  %4d %4d %4d  %5.3f", standings[i].agent, standings[i].games, standings[i].wins, standings[i].losses, 0.5f * (1.0f + (float)(standings[i].wins - standings[i].losses) / (float)standings[i].games));
-			printf("   (%3d-%3d)     %+4d\n", vsChamp[standings[i].agent].wins,vsChamp[standings[i].agent].losses, vsChamp[standings[i].agent].wins - vsChamp[standings[i].agent].losses);
-			totChamp.games += vsChamp[standings[i].agent].games;
-			totChamp.wins += vsChamp[standings[i].agent].wins;
-			totChamp.losses += vsChamp[standings[i].agent].losses;
-		}
-		printf("                        average: (%5.1f-%5.1f)   %+5.1f\n", (float)totChamp.wins / (float)g_p.num_agents, (float)totChamp.losses / (float)g_p.num_agents, (float)(totChamp.wins-totChamp.losses) / (float)g_p.num_agents);
+//		qsort(standings, g_p.num_agents, sizeof(WON_LOSS), wl_compare);
+//		printf(    "             G    W    L    PCT");
+//		printf("   %4d games vs Champ\n", CHAMP_GAMES);
+//
+//		WON_LOSS totChamp = {0, 0, 0, 0};
+//		
+//		for (int i = 0; i < g_p.num_agents; i++) {
+//			printf("agent%4d  %4d %4d %4d  %5.3f", standings[i].agent, standings[i].games, standings[i].wins, standings[i].losses, 0.5f * (1.0f + (float)(standings[i].wins - standings[i].losses) / (float)standings[i].games));
+//			printf("   (%3d-%3d)     %+4d\n", vsChamp[standings[i].agent].wins,vsChamp[standings[i].agent].losses, vsChamp[standings[i].agent].wins - vsChamp[standings[i].agent].losses);
+//			totChamp.games += vsChamp[standings[i].agent].games;
+//			totChamp.wins += vsChamp[standings[i].agent].wins;
+//			totChamp.losses += vsChamp[standings[i].agent].losses;
+//		}
+//		printf("                        average: (%5.1f-%5.1f)   %+5.1f\n", (float)totChamp.wins / (float)g_p.num_agents, (float)totChamp.losses / (float)g_p.num_agents, (float)(totChamp.wins-totChamp.losses) / (float)g_p.num_agents);
 
 		// remember the best agent so far
 		lastWinner = standings[0].agent;
