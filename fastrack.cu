@@ -1390,6 +1390,25 @@ int wl_compare(const void *p1, const void *p2)
 	return result; 
 }
 
+
+void print_standings(WON_LOSS *standings, WON_LOSS *vsChamp)
+{
+		qsort(standings, g_p.num_agents, sizeof(WON_LOSS), wl_compare);
+		printf(    "             G    W    L    PCT");
+		printf("   %4d games vs Champ\n", CHAMP_GAMES);
+
+		WON_LOSS totChamp = {0, 0, 0, 0};
+		
+		for (int i = 0; i < g_p.num_agents; i++) {
+			printf("agent%4d  %4d %4d %4d  %5.3f", standings[i].agent, standings[i].games, standings[i].wins, standings[i].losses, 0.5f * (1.0f + (float)(standings[i].wins - standings[i].losses) / (float)standings[i].games));
+			printf("  (%4d-%4d)    %+5d\n", vsChamp[standings[i].agent].wins,vsChamp[standings[i].agent].losses, vsChamp[standings[i].agent].wins - vsChamp[standings[i].agent].losses);
+			totChamp.games += vsChamp[standings[i].agent].games;
+			totChamp.wins += vsChamp[standings[i].agent].wins;
+			totChamp.losses += vsChamp[standings[i].agent].losses;
+		}
+		printf("               average vs champ: (%5.1f-%5.1f)   %+5.1f\n", (float)totChamp.wins / (float)g_p.num_agents, (float)totChamp.losses / (float)g_p.num_agents, (float)(totChamp.wins-totChamp.losses) / (float)g_p.num_agents);
+}
+
 RESULTS *runCPU(AGENT *agCPU)
 {
 	printf("running on CPU...\n");
@@ -1400,51 +1419,46 @@ RESULTS *runCPU(AGENT *agCPU)
 	
 	FILE *champFile = fopen(AGENT_FILE_CHAMP, "r");
 	unsigned champ_num_hidden = read_num_hidden(champFile);
-	printf("champ from file %s has %d hidden nodes\n", AGENT_FILE_CHAMP, champ_num_hidden);
+//	printf("champ from file %s has %d hidden nodes\n", AGENT_FILE_CHAMP, champ_num_hidden);
 	float *champ_wgts = (float *)malloc(champ_num_hidden * (2*g_p.board_size + 3) * sizeof(float));
 	read_wgts(champFile, champ_wgts);
-//	printf("champ's wgts:\n");
-//	dump_all_wgts(champ_wgts, champ_num_hidden);
 	fclose(champFile);
 	
-	// clone all agents from the champ
-	if (champ_num_hidden != g_p.num_hidden) {
-		printf("can't run with different hidden nodes between champ and new agents\n");
-		exit(-1);
-	}
-	for (int i = 0; i < g_p.num_agents; i++) {
-		memcpy(agCPU->wgts + i*g_p.num_wgts, champ_wgts, g_p.num_wgts * sizeof(float));
-	}
-
+	// each episode, the agent's weights are saved to be used as opponents
 	float *saved_wgts = (float *)malloc(g_p.num_agents * g_p.num_wgts * sizeof(float));
+	
+	// standings holds the won/loss record during learning
 	WON_LOSS *standings = (WON_LOSS *)malloc(g_p.num_agents * sizeof(WON_LOSS));
+	
+	// vsChamp hods won-loss record when each agent is run against the benchmark after learning
 	WON_LOSS *vsChamp = (WON_LOSS *)malloc(g_p.num_agents * sizeof(WON_LOSS));
 	
-//	float *benchmark_wgts = (float *)malloc(g_p.num_wgts * sizeof(float));
-	unsigned prevWinner = 0;
+	unsigned lastWinner = 0;
 
-//	printf("warm-up versus RAND\n");
-//	for (int iAg = 0; iAg < g_p.num_agents; iAg++) {
-//		unsigned save_num_pieces = g_p.num_pieces;
-//		printf("agent %d learning against RAND ... ", iAg);
-//		for (int p = 1; p <= save_num_pieces; p++) {
-//			g_p.num_pieces = p;
-//			printf(" %d ... ", p);
-//			auto_learn(agCPU, iAg, NULL, g_p.num_pieces, g_p.warmup_length, g_p.max_turns, 0);
-//		}
-//		printf(" done\n");
-//		g_p.num_pieces = save_num_pieces;
-//	}
-	unsigned ahl = ALPHA_HALF_LIFE;
-	for (int iSession = 0; iSession < g_p.num_sessions; iSession++) {
-		if (0 == (iSession + 1)%ahl) {
-			ahl *= 2;	// next half-life is twice as long
-			// cut alpha in half very ahl sessions
-			for (int i = 0; i < g_p.num_agents; i++) {
-				agCPU->alpha[i] /= 2.0f;
-			}
-			printf("alpha reduced to %9.6f\n", agCPU->alpha[0]);
+	printf("warm-up versus RAND\n");
+	for (int iAg = 0; iAg < g_p.num_agents; iAg++) {
+		unsigned save_num_pieces = g_p.num_pieces;
+		printf("agent %d learning against RAND ... ", iAg);
+		for (int p = 1; p <= save_num_pieces; p++) {
+			g_p.num_pieces = p;
+			printf(" %d ... ", p);
+			auto_learn(agCPU, iAg, NULL, g_p.num_pieces, g_p.warmup_length, g_p.max_turns, 0);
 		}
+		printf(" done\n");
+		g_p.num_pieces = save_num_pieces;
+	}
+
+//	unsigned ahl = ALPHA_HALF_LIFE;
+	for (int iSession = 0; iSession < g_p.num_sessions; iSession++) {
+//		if (0 == (iSession + 1)%ahl) {
+//			ahl *= 2;	// next half-life is twice as long
+//			// cut alpha in half very ahl sessions
+//			for (int i = 0; i < g_p.num_agents; i++) {
+//				agCPU->alpha[i] /= 2.0f;
+//			}
+//			printf("alpha reduced to %9.6f\n", agCPU->alpha[0]);
+//		}
+
 		// copy the current weights to the saved_wgts area
 		memcpy(saved_wgts, agCPU->wgts, g_p.num_agents * g_p.num_wgts * sizeof(float));
 		
@@ -1465,17 +1479,17 @@ RESULTS *runCPU(AGENT *agCPU)
 				standings[iAg].wins += wl.wins;
 				standings[iAg].losses += wl.losses;
 				// compete one extra game against previoius winner
-				if (iSession > 0) {
-					wl = auto_learn(agCPU, iAg, saved_wgts + prevWinner * g_p.num_wgts, g_p.num_pieces, g_p.episode_length * g_p.num_agents, g_p.max_turns, g_p.num_hidden);
-					standings[iAg].games += wl.games;
-					standings[iAg].wins += wl.wins;
-					standings[iAg].losses += wl.losses;
-				}
+//				if (iSession > 0) {
+//					wl = auto_learn(agCPU, iAg, saved_wgts + prevWinner * g_p.num_wgts, g_p.num_pieces, g_p.episode_length * g_p.num_agents, g_p.max_turns, g_p.num_hidden);
+//					standings[iAg].games += wl.games;
+//					standings[iAg].wins += wl.wins;
+//					standings[iAg].losses += wl.losses;
+//				}
 //				printf("g_p.num_hidden is %d\n", g_p.num_hidden);
 			}
 			
 			// compete against the champ
-//			vsChamp[iAg] = compete(agCPU->wgts + iAg * g_p.num_wgts, NULL, champ_wgts, NULL, g_p.num_pieces, CHAMP_GAMES, g_p.max_turns, 0, champ_num_hidden);
+			vsChamp[iAg] = compete(agCPU->wgts + iAg * g_p.num_wgts, NULL, champ_wgts, NULL, g_p.num_pieces, CHAMP_GAMES, g_p.max_turns, 0, champ_num_hidden);
 			
 			// compete (and learn) against the champ
 //			printf("before learning vs. champ: g_p.num_hidden is %d\n", g_p.num_hidden);
@@ -1503,16 +1517,17 @@ RESULTS *runCPU(AGENT *agCPU)
 		}
 		printf("                        average: (%5.1f-%5.1f)   %+5.1f\n", (float)totChamp.wins / (float)g_p.num_agents, (float)totChamp.losses / (float)g_p.num_agents, (float)(totChamp.wins-totChamp.losses) / (float)g_p.num_agents);
 
-		// save the best agent to be the benchmark for the next round
-		prevWinner = standings[0].agent;
-//		memcpy(benchmark_wgts, agCPU->wgts + prevWinner * g_p.num_wgts, g_p.num_wgts * sizeof(float));
+		// remember the best agent so far
+		lastWinner = standings[0].agent;
 	}
 	
+	// write the best agent to the AGENT_FILE_OUT
 	FILE *agfile = fopen(AGENT_FILE_OUT, "w");
-	save_agent(agfile, agCPU, prevWinner);
+	save_agent(agfile, agCPU, lastWinner);
 	fclose(agfile);
 
-	WON_LOSS wlChamp = compete(agCPU->wgts + prevWinner * g_p.num_wgts, "CHALLENGER", champ_wgts, "CHAMP", g_p.num_pieces, 1000, g_p.max_turns, 0, champ_num_hidden);
+	// as a final test, see if the last winner can beat the champ over 1000 games
+	WON_LOSS wlChamp = compete(agCPU->wgts + lastWinner * g_p.num_wgts, "CHALLENGER", champ_wgts, "CHAMP", g_p.num_pieces, 1000, g_p.max_turns, 0, champ_num_hidden);
 	printf("CHALLENGER v CHAMP  G: %d  W: %d  L: %d    %+4d   ", wlChamp.games, wlChamp.wins, wlChamp.losses, wlChamp.wins - wlChamp.losses);
 
 	if (wlChamp.wins < wlChamp.losses) {
@@ -1523,13 +1538,12 @@ RESULTS *runCPU(AGENT *agCPU)
 
 	// show a few games of the best against itself
 #ifdef SHOW_SAMPLE_GAMES_AFTER_LEARNING
-	compete(agCPU->wgts + prevWinner * g_p.num_wgts, "BEST", agCPU->wgts + prevWinner * g_p.num_wgts, "BEST", g_p.num_pieces, SHOW_SAMPLE_GAMES_AFTER_LEARNING, g_p.max_turns, 1);
+	compete(agCPU->wgts + lastWinner * g_p.num_wgts, "BEST", agCPU->wgts + lastWinner * g_p.num_wgts, "BEST", g_p.num_pieces, SHOW_SAMPLE_GAMES_AFTER_LEARNING, g_p.max_turns, 1);
 #endif
 	fclose(f);
 	free(saved_wgts);
 	free(standings);
 	free(champ_wgts);
-//	free(benchmark_wgts);
 	return NULL;
 }
 
