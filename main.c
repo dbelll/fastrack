@@ -123,6 +123,8 @@ PARAMS read_params(int argc, const char **argv)
 	p.timesteps = p.num_sessions * p.num_agents * p.episode_length;
 	p.agent_timesteps = p.timesteps * p.num_agents;
 	
+	p.champ = AGENT_FILE_CHAMP;
+	
 	printf("[FASTRACK][BOARD_SIZE %06d][NUM_PIECES %3d][MAX_TURNS %3d][SEED%10d][NUM_HIDDEN%4d][INIT_WGT_MIN%7.4f][INIT_WGT_MAX%7.4f][ALPHA%7.4f][EPSILON%7.4f][GAMMA%7.4f][LAMBDA%7.4f][NUM_AGENTS%7d][NUM_SESSIONS%7d][EPISODE_LENGTH%7d][WARMUP_LENGTH%7d]\n", 1000*p.board_width + p.board_height, p.num_pieces, p.max_turns, p.seed, p.num_hidden, p.init_wgt_min, p.init_wgt_max, p.alpha, p.epsilon, p.gamma, p.lambda, p.num_agents, p.num_sessions, p.episode_length, p.warmup_length);
 
 	printf("\n");
@@ -141,18 +143,27 @@ int main(int argc, const char **argv)
 	if (p.run_on_GPU) {
 		agGPU = init_agentsGPU(agCPU);
 	}
-	
-//	dump_agentsCPU("initial agents", agCPU, 1);
+
+	// load champ weights for benchmark testing
+	float *champ_wgts = load_champ(AGENT_FILE_CHAMP);
 	
 	RESULTS *resultsCPU = NULL;
 	RESULTS *resultsGPU = NULL;
-	if (p.run_on_CPU) resultsCPU = runCPU(agCPU);
-	if (p.run_on_GPU) resultsGPU = runGPU(agGPU);
+	if (p.run_on_CPU) resultsCPU = runCPU(agCPU, champ_wgts);
+	if (p.run_on_GPU) resultsGPU = runGPU(agGPU, champ_wgts);
 	
+	printf("done runs\n");
+
 	if (resultsCPU) dumpResults(resultsCPU);
 	if (resultsGPU) dumpResults(resultsGPU);
-		
-//	dump_state(start_state());
+
+	printf("done dump results\n");
 	
+	// Save best agent to file from GPU run, or if no GPU run, from the CPU run
+	if(p.run_on_GPU && resultsGPU) save_agent(AGENT_FILE_OUT, agGPU, resultsGPU->iBest);
+	else if (p.run_on_CPU && resultsCPU) save_agent(AGENT_FILE_OUT, agCPU, resultsCPU->iBest);
+	
+	printf("saving agent\n");
+
 	return 0;
 }

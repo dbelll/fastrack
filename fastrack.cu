@@ -42,11 +42,9 @@ __constant__ unsigned dc_board_size;
 __constant__ unsigned dc_num_wgts;
 
 #pragma mark -
-#pragma mark misc.
+#pragma mark Helpers
 
-/*
-	Initialize the global seeds using specified seed value.
-*/
+//	Initialize the global seeds using specified seed value.
 void set_global_seeds(unsigned seed)
 {
 	srand(seed);
@@ -86,42 +84,6 @@ char *move_stringi(char *buff, unsigned i)
 #pragma mark -
 #pragma mark allocating and freeing
 
-void freeAgentGPU(AGENT *ag)
-{
-	if (ag) {
-		if (ag->seeds) CUDA_SAFE_CALL(cudaFree(ag->seeds));
-		if (ag->wgts) CUDA_SAFE_CALL(cudaFree(ag->wgts));
-		if (ag->e) CUDA_SAFE_CALL(cudaFree(ag->e));
-		if (ag->alpha) CUDA_SAFE_CALL(cudaFree(ag->alpha));
-		if (ag->epsilon) CUDA_SAFE_CALL(cudaFree(ag->epsilon));
-		if (ag->lambda) CUDA_SAFE_CALL(cudaFree(ag->lambda));
-		CUDA_SAFE_CALL(cudaFree(ag));
-	}
-}
-
-void freeAgentCPU(AGENT *ag)
-{
-	if (ag) {
-		if (ag->seeds) free(ag->seeds);
-		if (ag->wgts) free(ag->wgts);
-		if (ag->e) free(ag->e);
-		if (ag->alpha) free(ag->alpha);
-		if (ag->epsilon) free(ag->epsilon);
-		if (ag->lambda) free(ag->lambda);
-		free(ag);
-	}
-}
-
-void freeCompactAgent(COMPACT_AGENT *ag)
-{
-	if (ag) {
-		if (ag->seeds) free(ag->seeds);
-		if (ag->fdata) free(ag->fdata);
-		free(ag);
-	}
-}
-
-
 #pragma mark -
 #pragma mark game functions
 
@@ -140,7 +102,7 @@ unsigned game_won(float reward){
 }
 
 // Calculate the reward for the given state (from X's perspective)
-// non-zero reward ==> terminal state
+// and set the value for the terminal flag
 float reward(unsigned *state, unsigned *terminal)
 {
 	float reward = 0.0f;
@@ -185,15 +147,6 @@ float val_for_state(float *wgts, unsigned *state, float *hidden, float *out)
 	return out[0];
 }
 
-//unsigned int_for_cell(unsigned row, unsigned col)
-//{
-//	return (col + row * g_p.board_width) / 32;
-//}
-//
-//unsigned bit_for_cell(unsigned row, unsigned col)
-//{
-//	return (col + row * g_p.board_width) % 32;
-//}
 
 unsigned val_for_cell(unsigned row, unsigned col, unsigned *board)
 {
@@ -221,10 +174,11 @@ char char_for_cell(unsigned row, unsigned col, unsigned *state)
 }
 
 // add n pieces to un-occupied cells of a board
-void random_add(unsigned *board, unsigned n)
+void random_add(unsigned *board, unsigned n, unsigned *seeds, unsigned stride)
 {
 	while (n > 0) {
-		unsigned i = rand() % g_p.board_size;
+//		unsigned i = rand() % g_p.board_size;
+		unsigned i = RandUniformui(seeds, stride) % g_p.board_size;
 		if (!board[i]) {
 			board[i] = 1;
 			--n;
@@ -232,180 +186,37 @@ void random_add(unsigned *board, unsigned n)
 	}
 }
 
-// generate a random board
-void random_board(unsigned *board, unsigned n)
+// generate a board with n pieces placed at random
+void random_board(unsigned *board, unsigned n, unsigned *seeds, unsigned stride)
 {
 	// first, empty the board
 	for (int i = 0; i < g_p.board_size; i++) board[i] = 0;
 	
 	// now add a random, non-occupied cell
-	random_add(board, n);
+	random_add(board, n, seeds, stride);
 }
 
 
-// generate a random board, avoiding any occupied cells in the mask
-void random_board_masked(unsigned *board, unsigned *mask, unsigned n)
+// add n pieces randomly to an existing board, avoiding any occupied cells in the mask
+void random_board_masked(unsigned *board, unsigned *mask, unsigned n, unsigned *seeds, unsigned stride)
 {
 	// first, copy the mask to the board
 	for (int i = 0; i < g_p.board_size; i++) board[i] = mask[i];
 
 	// now add a random, non-occupied cell
-	random_add(board, n);
+	random_add(board, n, seeds, stride);
 	
 	// XOR away the mask
 	for (int i = 0; i < g_p.board_size; i++) board[i] ^= mask[i];
 }
 
 // generate a random state with n pieces for ech player
-void random_state(unsigned *state, unsigned n)
+void random_state(unsigned *state, unsigned n, unsigned *seeds, unsigned stride)
 {
-	random_board(X_BOARD(state), n);
-	random_board_masked(O_BOARD(state), X_BOARD(state), n);
+	random_board(X_BOARD(state), n, seeds, stride);
+	random_board_masked(O_BOARD(state), X_BOARD(state), n, seeds, stride);
 }
 
-// return a read-only mask for the specified number of cols on the right
-//unsigned *mask_cols_right(unsigned cols)
-//{
-//	static unsigned need_init = 1;
-//	static unsigned *mask;
-//	if (need_init) {
-//		mask = (unsigned *)calloc(g_p.board_ints * (g_p.board_width-1), sizeof(unsigned));
-//		for (int delta = 1; delta < g_p.board_width; delta++) {
-//			for (int col = g_p.board_width - delta; col < g_p.board_width; col++) {
-//				for (int row = 0; row < g_p.board_height; row++) {
-//					set_val_for_cell(row, col, mask + (delta-1)*g_p.board_ints, 1);
-//				}
-//			}
-//		}
-//	}
-//	return mask + (cols-1)*g_p.board_ints;
-//}
-//
-// return a read-only mask for the specified number of cols on the left
-//unsigned *mask_cols_left(unsigned cols)
-//{
-//	static unsigned need_init = 1;
-//	static unsigned *mask;
-//	if (need_init) {
-//		mask = (unsigned *)calloc(g_p.board_ints * (g_p.board_width-1), sizeof(unsigned));
-//		for (int delta = 1; delta < g_p.board_width; delta++) {
-//			for (int col = 0; col < delta; col++) {
-//				for (int row = 0; row < g_p.board_height; row++) {
-//					set_val_for_cell(row, col, mask + (delta-1)*g_p.board_ints, 1);
-//				}
-//			}
-//		}
-//	}
-//	return mask + (cols-1)*g_p.board_ints;
-//}
-//
-// a mask for the unused bits above the board
-//unsigned *mask_rows_top()
-//{
-//	static unsigned *mask;
-//	if (!mask) {
-//		mask = (unsigned *)calloc(g_p.board_ints, sizeof(unsigned));
-//		if (g_p.board_unused > 0) {
-//			mask[g_p.board_ints-1] = - (1 << (32 - g_p.board_unused));
-//		}
-//	}
-//	return mask;
-//}
-//
-// shift the board by a number of columns
-//void colshift(unsigned *board, int delta)
-//{
-//	printf("colshift -- initial board:\n");
-//	dump_board(board);
-//	
-//	if (delta < 0) {
-//		delta = -delta;
-//
-//		printf("shifting the board %d columns to the left\n", delta);
-//
-//		// shift the low int to the left (lo-bits) first
-//		board[0] >>= delta;
-//		
-//		printf("board after shifting the low int to the left\n");
-//		dump_board(board);
-//		
-//		// get a mask to make the new columns blank
-//		unsigned *mask = mask_cols_right(delta);
-//
-//		if (g_p.board_ints > 1) {
-//			// get the bits that will shift out of the hi int
-//			unsigned bits = ((1 << delta) - 1) & board[1];
-//			// align them to the highest bits
-//			bits <<= (32 - delta);
-//			// add them to the lo int
-//			board[0] |= bits;
-//			// now shift the hi int by delta
-//			board[1] >>= delta;
-//			// mask off the bits in the new cols
-//			board[1] &= ~mask[1];
-//		}
-//		board[0] &= ~mask[0];
-//	}else if (delta > 0) {
-//	
-//		printf("shifting the board %d columns to the right\n", delta);
-//
-//		// shift the high int to the right (hi-bits) first
-//		unsigned *col_mask = mask_cols_left(delta);
-//
-//		printf("col_mask:\n");
-//		dump_board(col_mask);
-//
-//		unsigned *row_mask = mask_rows_top();
-//
-//		if (g_p.board_ints > 1) {
-//			board[1] <<= delta;
-//		
-//			printf("board after shifting the hi int to the right\n");
-//			dump_board(board);
-//		
-//			// get the bits that will shift out of the lo int
-//			unsigned bits = -(1 << (32-delta)) & board[0];
-//			// align them to the lo bits
-//			bits >>= 32-delta;
-//			// add them to the hi int
-//			board[1] |= bits;
-//			
-//			printf("board after adding the bits that shifted from lo int to hi int\n");
-//			dump_board(board);
-//			
-//			// mask off the rows above the board and cols on the left
-//			board[1] &= ((~row_mask[1]) & (~col_mask[1]));
-//			
-//			printf("board after masking off the hi int\n");
-//			dump_board(board);
-//		}
-//		board[0] <<= delta;
-//
-//		printf("board after shifting the lo int to the right\n");
-//		dump_board(board);
-//
-//		board[0] &= ~row_mask[0] & ~col_mask[0];
-//
-//		printf("board after masking off the lo int\n");
-//		dump_board(board);
-//	}
-//}
-//
-//void rowshift(unsigned *board, int delta)
-//{
-//	colshift(board, delta * g_p.board_width);
-//}
-//
-//void shift_board(unsigned *board, int colDelta, int rowDelta)
-//{
-//	colshift(board, colDelta + g_p.board_width * rowDelta);
-//}
-//
-//void shift_state(unsigned *state, int colDelta, int rowDelta)
-//{
-//	shift_board(state, colDelta, rowDelta);
-//	shift_board(state + g_p.board_ints, colDelta, rowDelta);
-//}
 
 
 // copy the starting state to the provided location
@@ -439,7 +250,53 @@ unsigned count_pieces(unsigned *board)
 }
 
 #pragma mark -
-#pragma mark dump stuff
+#pragma mark Read/write stuff
+
+int wl_compare(const void *p1, const void *p2)
+{
+	const WON_LOSS *wl1 = (const WON_LOSS *)p1;
+	const WON_LOSS *wl2 = (const WON_LOSS *)p2;
+	float score1 = (wl1->wins - wl1->losses) / (float)wl1->games;
+	float score2 = (wl2->wins - wl2->losses) / (float)wl2->games;
+	int result = 0;
+	if (score1 > score2) result = -1;
+	if (score1 < score2) result = 1;
+//	printf("(%d-%d-%d  %5.3f) vs (%d-%d-%d  %5.3f) comparison is %d\n", wl1->wins, wl1->losses, wl1->games - wl1->wins - wl1->losses, score1, wl1->wins, wl2->losses, wl2->games - wl2->wins - wl2->losses, score2, result);
+	return result; 
+}
+
+// calculate the winning percentage based on games, wins and losses in WON_LOSS structure
+float winpct(WON_LOSS wl)
+{
+	return 0.5f * (1.0f + (float)(wl.wins - wl.losses)/(float)wl.games);
+}
+
+// Print sorted standings using the WON_LOSS information in standings (from learning vs. peers),
+// and vsChamp (from competing against benchmark agent).
+void print_standings(WON_LOSS *standings, WON_LOSS *vsChamp)
+{
+		qsort(standings, g_p.num_agents, sizeof(WON_LOSS), wl_compare);
+		printf(    "             G    W    L    PCT");
+		printf("   %4d games vs Champ\n", CHAMP_GAMES);
+
+		WON_LOSS totChamp = {0, 0, 0, 0};
+		WON_LOSS totStand = {0, 0, 0, 0};
+		
+		for (int i = 0; i < g_p.num_agents; i++) {
+//			printf("agent%4d  %4d %4d %4d  %5.3f", standings[i].agent, standings[i].games, standings[i].wins, standings[i].losses, 0.5f * (1.0f + (float)(standings[i].wins - standings[i].losses) / (float)standings[i].games));
+			printf("agent%4d  %4d %4d %4d  %5.3f", standings[i].agent, standings[i].games, standings[i].wins, standings[i].losses, winpct(standings[i]));
+			
+			totStand.games += standings[i].games;
+			totStand.wins += standings[i].wins;
+			totStand.losses += standings[i].losses;
+			
+			printf("  (%4d-%4d)    %+5d\n", vsChamp[standings[i].agent].wins,vsChamp[standings[i].agent].losses, vsChamp[standings[i].agent].wins - vsChamp[standings[i].agent].losses);
+			totChamp.games += vsChamp[standings[i].agent].games;
+			totChamp.wins += vsChamp[standings[i].agent].wins;
+			totChamp.losses += vsChamp[standings[i].agent].losses;
+		}
+		printf(" avg      %5d%5d%5d  %5.3f (%5.1f-%5.1f)   %+5.1f\n", totStand.games, totStand.wins, totStand.losses, winpct(totStand), (float)totChamp.wins / (float)g_p.num_agents, (float)totChamp.losses / (float)g_p.num_agents, (float)(totChamp.wins-totChamp.losses) / (float)g_p.num_agents);
+}
 
 // write the global parameters to a .CSV file
 void save_parameters(FILE *f)
@@ -465,8 +322,13 @@ void save_parameters(FILE *f)
 }
 
 // write agent weights to a file, including some game parameters
-void save_agent(FILE *f, AGENT *ag, unsigned iAg)
+void save_agent(const char *file, AGENT *ag, unsigned iAg)
 {
+	FILE *f = fopen(file, "w");
+	if (!f) {
+		printf("Can not open file for saving agent %s\n", file);
+		return;
+	}
 	// current file version number
 	static unsigned version = 1;
 	
@@ -480,6 +342,7 @@ void save_agent(FILE *f, AGENT *ag, unsigned iAg)
 	for (int i = 0; i < g_p.num_wgts; i++) {
 		fprintf(f, "%f\n", ag->wgts[iAg * g_p.num_wgts + i]);
 	}
+	fclose(f);
 }
 
 void read_agent(FILE *f, AGENT *ag, unsigned iAg)
@@ -514,6 +377,32 @@ void read_agent(FILE *f, AGENT *ag, unsigned iAg)
 	}
 }
 
+unsigned read_num_wgts(FILE *f)
+{
+	unsigned version;
+	unsigned board_width, board_height;
+	unsigned num_pieces;
+	unsigned max_turns;
+	unsigned num_hidden;
+	unsigned num_wgts;
+	fseek(f, 0L, SEEK_SET);
+	fscanf(f, "%d", &version);
+
+	switch (version) {
+		case 1:
+			fscanf(f, "%u", &board_width);
+			fscanf(f, "%u", &board_height);
+			fscanf(f, "%u", &num_pieces);
+			fscanf(f, "%u", &max_turns);
+			fscanf(f, "%u", &num_hidden);
+			fscanf(f, "%u", &num_wgts);
+			break;
+		default:
+			break;
+	}
+	return num_wgts;
+}
+
 unsigned read_num_hidden(FILE *f)
 {
 	unsigned version;
@@ -541,6 +430,7 @@ unsigned read_num_hidden(FILE *f)
 	return num_hidden;
 }
 
+// read in just the weights from an agent file
 void read_wgts(FILE *f, float *wgts)
 {
 	unsigned version;
@@ -563,14 +453,32 @@ void read_wgts(FILE *f, float *wgts)
 			fscanf(f, "%u", &num_wgts);
 			for (int i = 0; i < num_wgts; i++) {
 				fscanf(f, "%f", wgts + i);
-				printf("wgt %d is %9.6f\n", i, wgts[i]);
+//				printf("wgt %d is %9.6f\n", i, wgts[i]);
 			}
 			break;
 		default:
 			break;
 	}
-	printf("read_num_hidden: (%dx%d) board, %d pieces, %d turns, %d num_hidden, %d num_wgts\n", board_width, board_height, num_pieces, max_turns, num_hidden, num_wgts);
+	printf("read_wgts: (%dx%d) board, %d pieces, %d turns, %d num_hidden, %d num_wgts\n", board_width, board_height, num_pieces, max_turns, num_hidden, num_wgts);
+}
 
+// load weights for champ from a file
+float *load_champ(const char *file)
+{
+	FILE *f = fopen(file, "r");
+	if (!f) {
+		printf("could not open champ file %s\n", file);
+		exit(-1);
+	}
+	
+	// allocate an array of the appropriate size to hold champ's weights
+	unsigned num_wgts = read_num_hidden(f);
+	float *wgts = (float *)malloc(num_wgts * sizeof(float));
+	
+	// now read the weights from the file to fill the array
+	read_wgts(f, wgts);
+	fclose(f);
+	return wgts;
 }
 
 void dump_col_header(unsigned leftMargin, unsigned nCols)
@@ -583,14 +491,6 @@ void dump_col_header(unsigned leftMargin, unsigned nCols)
 	}
 	printf("\n");
 }
-
-//void dump_boards(unsigned *b1, unsigned *b2)
-//{
-//	unsigned *state = (unsigned *)malloc(2 * g_p.state_size * sizeof(unsigned));
-//	bcopy(b1, state, g_p.state_size * sizeof(unsigned));
-//	bcopy(b2, state + g_p.state_size, g_p.state_size * sizeof(unsigned));
-//	dump_state(state);
-//}
 
 void dump_state_ints(unsigned *state)
 {
@@ -615,26 +515,6 @@ void dump_state(unsigned *state, unsigned turn, unsigned nextToPlay)
 		printf("\n");
 	}
 	dump_col_header(3, g_p.board_width);
-//	printf("[STATE");
-//	for (int i = 0; i < g_p.state_size; i++) {
-//		printf("%11u", state[i]);
-//	}
-//	printf("\n");
-//	dump_state_ints(state);
-}
-
-void dump_board(unsigned *board)
-{
-	dump_col_header(3, g_p.board_width);
-	for (int row = g_p.board_height - 1; row >= 0; row--) {
-		printf("%2u ", row+1);
-		for (int col = 0; col < g_p.board_width; col++) {
-			printf(" %c", val_for_cell(row, col, board) ? 'X' : '.');
-		}
-		printf("%3u", row+1);
-		printf("\n");
-	}
-	dump_col_header(3, g_p.board_width);
 }
 
 
@@ -647,6 +527,7 @@ void dump_wgts_header(const char *str)
 	printf("\n");
 }
 
+// straight dump of weight values
 void dump_wgts(float *wgts)
 {
 	for (int i = 0; i < g_p.num_hidden; i++) {
@@ -655,6 +536,7 @@ void dump_wgts(float *wgts)
 	printf("\n");
 }
 
+// print out all weights in a formatted output
 void dump_all_wgts(float *wgts, unsigned num_hidden)
 {
 	dump_wgts_header("[ WEIGHTS]");
@@ -698,6 +580,7 @@ void dump_agent(AGENT *agCPU, unsigned iag, unsigned dumpW)
 	printf("[  lambda], %9.4f\n\n", agCPU->lambda[iag]);
 }
 
+// dump all agents, flag controls if the eligibility trace values are also dumped
 void dump_agentsCPU(const char *str, AGENT *agCPU, unsigned dumpW)
 {
 	printf("======================================================================\n");
@@ -711,53 +594,52 @@ void dump_agentsCPU(const char *str, AGENT *agCPU, unsigned dumpW)
 	
 }
 
-void dump_compact_agent(COMPACT_AGENT *ag)
-{
-	printf("[SEEDS], %10d, %10d %10d %10d\n", ag->seeds[0], ag->seeds[1], ag->seeds[2], ag->seeds[3]);
-	printf("[    B->H]"); dump_wgts(ag->fdata + ag->iWgts);
-	for (int i = 0; i < g_p.state_size; i++){
-		printf("[IN%03d->H]", i); dump_wgts(ag->fdata +ag->iWgts + (1+i) * g_p.num_hidden);
-	}
-	printf("[    H->O]"); dump_wgts(ag->fdata + ag->iWgts + (1+g_p.state_size) * g_p.num_hidden);
-	printf("[    B->O], %9.4f\n", ag->fdata[ag->iWgts + (2+g_p.state_size) * g_p.num_hidden]);
-	printf("[   alpha], %9.4f\n", ag->fdata[ag->iAlpha]);
-	printf("[ epsilon], %9.4f\n", ag->fdata[ag->iEpsilon]);
-	printf("[  lambda], %9.4f\n", ag->fdata[ag->iLambda]);
-}
-
-
-void dumpResults(RESULTS *row)
-{
-	printf("Best agents each round...\n");
-	for (int i = 0; i < row->allocated; i++) {
-		if (row->best+i){
-			printf("[ROUND%3d]\n", i);
-			dump_compact_agent(row->best+i);
-		}
-	}
-}
 
 
 #pragma mark -
-#pragma mark CPU - setup
-RESULTS *newResults()
+#pragma mark RESULTS functions
+void dumpResults(RESULTS *r)
 {
-	RESULTS *row = (RESULTS *)malloc(sizeof(RESULTS));
-	row->allocated = g_p.num_sessions;
-	row->best = (COMPACT_AGENT *)malloc(row->allocated * sizeof(COMPACT_AGENT));
-	return row;
+	FILE *f = fopen(LEARNING_LOG_FILE, "w");
+	if (!f) {
+		printf("could not open the LEARNING_LOG_FILE %s\n", LEARNING_LOG_FILE);
+		return;
+	}
+
+	save_parameters(f);
+	
+	// loop through each session and save the won-loss data to the LEARNING_LOG_FILE
+	for (int iSession = 0; iSession < g_p.num_sessions; iSession++) {
+		for (int iAg = 0; iAg < g_p.num_agents; iAg++) {
+			unsigned iStand = iSession * g_p.num_agents + iAg;
+			fprintf(f, "%d, %d, %d, %d, %d, %d, %d, %d\n", iSession, iAg, r->standings[iStand].games, r->standings[iStand].wins, r->standings[iStand].losses, r->vsChamp[iStand].games, r->vsChamp[iStand].wins, r->vsChamp[iStand].losses);
+		}
+	}
+	fclose(f);
 }
 
-void freeResults(RESULTS *row)
+// Allocate a RESULTS struture to hold results for p.num_sessions
+RESULTS *newResults(PARAMS p)
 {
-	if (row) {
-		for (int i = 0; i < row->allocated; i++)
-			if (row->best + i) freeCompactAgent(row->best+i);
-	
-		free(row);
+	RESULTS *results = (RESULTS *)malloc(sizeof(RESULTS));
+	results->p = p;
+	results->standings = (WON_LOSS *)malloc(p.num_sessions * p.num_agents * sizeof(WON_LOSS));
+	results->vsChamp = (WON_LOSS *)malloc(p.num_sessions * p.num_agents * sizeof(WON_LOSS));
+	return results;
+}
+
+
+void freeResults(RESULTS *r)
+{
+	if (r) {
+		if(r->standings) free(r->standings);
+		if(r->vsChamp) free(r->vsChamp);
+		free(r);
 	}
 }
 
+
+#pragma mark Initialization
 // calculates agent pointers based on offset from ag->wgts
 // agent data is organized as follows
 void set_agent_float_pointers(AGENT *ag)
@@ -803,7 +685,7 @@ void build_move_array()
 	}
 }
 
-// reset all agent weights to random initial values and reset trace to 0.0f
+// Reset all agent weights to random initial values and reset trace to 0.0f
 void randomize_agent(AGENT *ag)
 {
 	for (int i=0; i < g_p.num_wgts * g_p.num_agents; i++){
@@ -820,8 +702,43 @@ void set_agent_params(AGENT *ag, unsigned iAg, float alpha, float epsilon, float
 	ag->lambda[iAg] = lambda;
 }
 
+void freeAgentGPU(AGENT *ag)
+{
+	if (ag) {
+		if (ag->seeds) CUDA_SAFE_CALL(cudaFree(ag->seeds));
+		if (ag->wgts) CUDA_SAFE_CALL(cudaFree(ag->wgts));
+		if (ag->e) CUDA_SAFE_CALL(cudaFree(ag->e));
+		if (ag->alpha) CUDA_SAFE_CALL(cudaFree(ag->alpha));
+		if (ag->epsilon) CUDA_SAFE_CALL(cudaFree(ag->epsilon));
+		if (ag->lambda) CUDA_SAFE_CALL(cudaFree(ag->lambda));
+		CUDA_SAFE_CALL(cudaFree(ag));
+	}
+}
+
+void freeAgentCPU(AGENT *ag)
+{
+	if (ag) {
+		if (ag->seeds) free(ag->seeds);
+		if (ag->wgts) free(ag->wgts);
+		if (ag->e) free(ag->e);
+		if (ag->alpha) free(ag->alpha);
+		if (ag->epsilon) free(ag->epsilon);
+		if (ag->lambda) free(ag->lambda);
+		free(ag);
+	}
+}
+
 AGENT *init_agentsCPU(PARAMS p)
 {
+	// Save parameters to learning log file
+	FILE *f = fopen(LEARNING_LOG_FILE, "w");
+	if (!f) {
+		printf("could not open LEARNING_LOG_FILE\n");
+		exit(-1);
+	}
+	save_parameters(f);
+	fclose(f);
+	
 	printf("init_agentsCPU...\n");
 
 	// save the parameters and calculate any global constants based on the parameters
@@ -836,12 +753,8 @@ AGENT *init_agentsCPU(PARAMS p)
 	ag->seeds = (unsigned *)malloc(4 * p.num_agents * sizeof(unsigned));
 	for (int i = 0; i < 4*p.num_agents; i++) ag->seeds[i] = rand();
 	
-	ag->wgts = (float *)malloc(p.num_wgts * p.num_agents * sizeof(float));
-	ag->e = (float *)malloc(p.num_wgts * p.num_agents * sizeof(float));
-	ag->alpha = (float *)malloc(p.num_agents * sizeof(float));
-	ag->epsilon = (float *)malloc(p.num_agents * sizeof(float));
-	ag->lambda = (float *)malloc(p.num_agents * sizeof(float));
-		
+	ag->wgts = (float *)malloc(p.num_agent_floats * p.num_agents * sizeof(float));
+	set_agent_float_pointers(ag);	
 	randomize_agent(ag);
 	
 	for (int i = 0; i < p.num_agents; i++) { 
@@ -852,11 +765,29 @@ AGENT *init_agentsCPU(PARAMS p)
 }
 
 
+AGENT *init_agentsGPU(AGENT *agCPU)
+{
+	AGENT *agGPU = (AGENT *)malloc(sizeof(AGENT));
+	agGPU->seeds = device_copyui(agCPU->seeds, 4 * g_p.num_agents);
+	agGPU->wgts = device_copyf(agCPU->wgts, g_p.num_agent_floats * g_p.num_agents);
+	set_agent_float_pointers(agGPU);
+	
+	cudaMemcpyToSymbol("dc_ag", &agGPU, sizeof(AGENT));
+	cudaMemcpyToSymbol("dc_gamma", &g_p.gamma, sizeof(float));
+	cudaMemcpyToSymbol("dc_num_hidden", &g_p.num_hidden, sizeof(unsigned));
+	cudaMemcpyToSymbol("dc_state_size", &g_p.state_size, sizeof(unsigned));
+	cudaMemcpyToSymbol("dc_board_size", &g_p.board_size, sizeof(unsigned));
+	cudaMemcpyToSymbol("dc_num_wgts", &g_p.num_wgts, sizeof(unsigned));
+	return agGPU;
+}
+
+
 #pragma mark CPU - run
 
-float random_move(unsigned *state)
+// Make a random X move, updating state
+float random_move(unsigned *state, unsigned *seeds, unsigned stride)
 {
-//	printf("choose_move...\n");
+//	printf("random_move...\n");
 	static unsigned *possible_moves = NULL;
 	static unsigned allocated = 0;
 	if (!possible_moves){
@@ -887,7 +818,7 @@ float random_move(unsigned *state)
 		}
 	}
 	
-	unsigned r = move_count * ranf();
+	unsigned r = move_count * RandUniform(seeds, stride);
 	unsigned iRandFrom = possible_moves[r*2];
 	unsigned iRandTo = possible_moves[r*2 + 1];
 	// do the random move and return the value
@@ -895,18 +826,14 @@ float random_move(unsigned *state)
 	X_BOARD(state)[iRandTo] = 1;
 	O_BOARD(state)[iRandTo] = 0;
 	
-//	printf("best move with value %9.4f:\n", bestVal);
-//	dump_state(state);
-//	printf("\n\n");
-	// recalculate to fill in hidden and out for the chosen move
 	return 0.0f;
 }
 
 
 /*
 	Choose the move for player X from the given state using the nn specified by wgts.
-	Return the value of the best state and over-write currState with the best state.
-	calculate the values for every possible next state, and put the best one into nextState, returning its value
+	The best move is the legal move with the vest value, based on the NN.  The value of the
+	best move is returned by the function and state is updated for the move.
 */
 float choose_move(unsigned *state, float *wgts, float *hidden, float *out)
 {
@@ -1017,14 +944,14 @@ float take_action(unsigned *state, float *owgts, float *hidden, float *out, unsi
 }
 
 // O takes a random action from the specified state, returning X's reward
-float take_random_action(unsigned *state, unsigned *terminal)
+float take_random_action(unsigned *state, unsigned *terminal, unsigned *seeds, unsigned stride)
 {
 	float r = reward(state, terminal);
 	if (*terminal) return r;	// given state is terminal, just return the reward
 	switch_sides(state);
 //	printf("state after switching sides:\n");
 //	dump_state(state);
-	random_move(state);
+	random_move(state, seeds, stride);
 //	printf("state after opponent move:\n");
 //	dump_state(state);
 	switch_sides(state);
@@ -1033,10 +960,10 @@ float take_random_action(unsigned *state, unsigned *terminal)
 	return reward(state, terminal);
 }
 
-void set_start_state(unsigned *state, unsigned pieces)
+void set_start_state(unsigned *state, unsigned pieces, unsigned *seeds, unsigned stride)
 {
 //	printf("set_start_state...\n");
-	(pieces == 0) ? copy_start_state(state) : random_state(state, pieces);
+	(pieces == 0) ? copy_start_state(state) : random_state(state, pieces, seeds, stride);
 }
 
 void reset_trace(float *e)
@@ -1091,7 +1018,7 @@ void update_trace(unsigned *state, float *wgts, float *e, float *hidden, float *
 }
 
 
-WON_LOSS compete(float *ag1_wgts, const char *name1, float *ag2_wgts, const char *name2, unsigned start_pieces, unsigned num_games, unsigned turns_per_game, unsigned show, unsigned ag2_hidden)
+WON_LOSS compete(float *ag1_wgts, const char *name1, float *ag2_wgts, const char *name2, unsigned start_pieces, unsigned num_games, unsigned turns_per_game, unsigned show, unsigned ag2_hidden, unsigned *seeds, unsigned stride)
 {
 //	printf("\n=================================================================\n");
 //	printf("         %s     vs.     %s\n", name1, name2);
@@ -1113,12 +1040,12 @@ WON_LOSS compete(float *ag1_wgts, const char *name1, float *ag2_wgts, const char
 	SHOW printf(  "-----------------------------------------------------------------\n");
 	SHOW printf("game %d:\n", game);
 
-	set_start_state(state, start_pieces);
-	if (ranf() < 0.50f) {
+	set_start_state(state, start_pieces, seeds, stride);
+	if (RandUniform(seeds, stride) < 0.50f) {
 		SHOW printf("New game, O plays first\n");
 		SHOW dump_state(state, turn, 1);
 		(ag2_wgts	? take_action2(state, ag2_wgts, hidden, out, &terminal, ag2_hidden)
-					: take_random_action(state, &terminal));
+					: take_random_action(state, &terminal, seeds, stride));
 		++turn;
 	}else {
 		SHOW printf("New game, X plays first\n");
@@ -1127,12 +1054,12 @@ WON_LOSS compete(float *ag1_wgts, const char *name1, float *ag2_wgts, const char
 
 	
 	float V = (ag1_wgts	? choose_move(state, ag1_wgts, hidden, out)
-					: random_move(state));
+					: random_move(state, seeds, stride));
 	
 	while (game < num_games) {
 		SHOW dump_state(state, turn, 1);
 		float reward = (ag2_wgts	? take_action2(state, ag2_wgts, hidden, out, &terminal, ag2_hidden)
-									: take_random_action(state, &terminal));
+									: take_random_action(state, &terminal, seeds, stride));
 		++turn;
 		SHOW dump_state(state, turn, 0);
 		
@@ -1149,12 +1076,12 @@ WON_LOSS compete(float *ag1_wgts, const char *name1, float *ag2_wgts, const char
 				SHOW printf("\ngame %d:\n", game);
 				turn = 0;
 				terminal = 0;
-				set_start_state(state, start_pieces);
-				if (ranf() < 0.50f) {
+				set_start_state(state, start_pieces, seeds, stride);
+				if (RandUniform(seeds, stride) < 0.50f) {
 					SHOW printf("New game, O plays first\n");
 					SHOW dump_state(state, turn, 1);
 					(ag2_wgts	? take_action(state, ag2_wgts, hidden, out, &terminal)
-								: take_random_action(state, &terminal));
+								: take_random_action(state, &terminal, seeds, stride));
 					++turn;
 //					SHOW dump_state(state, turn, 0);
 				}else {
@@ -1165,7 +1092,7 @@ WON_LOSS compete(float *ag1_wgts, const char *name1, float *ag2_wgts, const char
 		}
 
 		float V_prime = (ag1_wgts	? choose_move(state, ag1_wgts, hidden, out)
-								: random_move(state));
+								: random_move(state, seeds, stride));
 		V = V_prime;
 	}
 //	printf("[COMPETE],%5d, %8s,%5d, %8s,%5d", num_games, name1, wl.wins, name2, wl.losses);
@@ -1180,7 +1107,7 @@ WON_LOSS compete(float *ag1_wgts, const char *name1, float *ag2_wgts, const char
 // Run a learning session using agent ag1 against ag2.  ag2 may be NULL which represents a random player
 // Start with a random board with start_pieces per side, or the normal starting board if start_pieces is 0
 // Stop the learning after num_turns (for each player)
-WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pieces, unsigned num_turns, unsigned max_turns, unsigned ag2_hidden)
+WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pieces, unsigned num_turns, unsigned max_turns, unsigned ag2_hidden, unsigned *seeds, unsigned stride)
 {
 //	printf("auto_learning: %d pieces,  %d turns, with %d max turns per game...\n", start_pieces, num_turns, max_turns);
 
@@ -1210,14 +1137,14 @@ WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pi
 	unsigned terminal = 0;
 	
 	// set up the starting state
-	set_start_state(state, start_pieces);
-	if (ranf() < 0.50f) {
+	set_start_state(state, start_pieces, seeds, stride);
+	if (RandUniform(seeds, stride) < 0.50f) {
 #ifdef DUMP_MOVES
 		printf("New game, O to play first...\n");
 		dump_state(state, turn, 1);		
 #endif
 		float r = (ag2_wgts	? take_action2(state, ag2_wgts, hidden, out, &terminal, ag2_hidden) 
-							: take_random_action(state, &terminal));
+							: take_random_action(state, &terminal, seeds, stride));
 		++turn;
 	}else {
 #ifdef DUMP_MOVES
@@ -1262,7 +1189,7 @@ WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pi
 		
 
 		float reward = (ag2_wgts	? take_action2(state, ag2_wgts, hidden, out, &terminal, ag2_hidden) 
-									: take_random_action(state, &terminal));
+									: take_random_action(state, &terminal, seeds, stride));
 		++turn;
 #ifdef DUMP_MOVES
 		dump_state(state, turn, 0);		
@@ -1294,14 +1221,14 @@ WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pi
 				printf("\n\n--------------- game %d ---------------------\n", wl.games);
 #endif
 				turn = 0;
-				set_start_state(state, start_pieces);
-				if (ranf() < 0.50f) {
+				set_start_state(state, start_pieces, seeds, stride);
+				if (RandUniform(seeds, stride) < 0.50f) {
 #ifdef DUMP_MOVES
 					printf("New game, O to play first...\n");
 					dump_state(state, turn, 1);		
 #endif
 					(ag2_wgts	? take_action(state, ag2_wgts, hidden, out, &terminal) 
-								: take_random_action(state, &terminal));
+								: take_random_action(state, &terminal, seeds, stride));
 					++turn;
 				}else {
 #ifdef DUMP_MOVES
@@ -1346,200 +1273,94 @@ WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pi
 	return wl;
 }
 
-void copy_agent(AGENT *agCPU, unsigned iFrom, unsigned iTo)
-{
-	// copy wgts
-//	printf("copying agent weights from %d to %d ... ", iFrom, iTo);
-	for (int i = 0; i < g_p.num_wgts; i++) {
-		agCPU->wgts[i + iTo * g_p.num_wgts] = agCPU->wgts[i + iFrom * g_p.num_wgts];
-	}
-//	printf("done\n");
-}
 
-void progress_indicator(WON_LOSS after, WON_LOSS before)
-{
-//	printf("\nbefore: W%4d  L%4d  Net%4d", before.wins, before.losses, before.wins - before.losses);
-//	printf(" after: W%4d  L%4d  Net%4d", after.wins, after.losses, after.wins - after.losses);
-	printf("  ,  W:%+4d L:%+4d NET:%+4d", after.wins - before.wins, after.losses - before.losses, (after.wins - after.losses) - (before.wins - before.losses));
-}
-
-const char *aname(unsigned n)
-{
-	static char buff[NAME_BUFF_SIZE];
-	snprintf(buff, NAME_BUFF_SIZE, "FT_%d", n);
-	return buff;
-}
-
-const char *oname(unsigned n)
-{
-	static char buff[NAME_BUFF_SIZE];
-	snprintf(buff, NAME_BUFF_SIZE, "FT_%d", n);
-	return buff;
-}
-
-int wl_compare(const void *p1, const void *p2)
-{
-	const WON_LOSS *wl1 = (const WON_LOSS *)p1;
-	const WON_LOSS *wl2 = (const WON_LOSS *)p2;
-	float score1 = (wl1->wins - wl1->losses) / (float)wl1->games;
-	float score2 = (wl2->wins - wl2->losses) / (float)wl2->games;
-	int result = 0;
-	if (score1 > score2) result = -1;
-	if (score1 < score2) result = 1;
-//	printf("(%d-%d-%d  %5.3f) vs (%d-%d-%d  %5.3f) comparison is %d\n", wl1->wins, wl1->losses, wl1->games - wl1->wins - wl1->losses, score1, wl1->wins, wl2->losses, wl2->games - wl2->wins - wl2->losses, score2, result);
-	return result; 
-}
-
-float winpct(WON_LOSS wl)
-{
-	return 0.5f * (1.0f + (float)(wl.wins - wl.losses)/(float)wl.games);
-}
-
-void print_standings(WON_LOSS *standings, WON_LOSS *vsChamp)
-{
-		qsort(standings, g_p.num_agents, sizeof(WON_LOSS), wl_compare);
-		printf(    "             G    W    L    PCT");
-		printf("   %4d games vs Champ\n", CHAMP_GAMES);
-
-		WON_LOSS totChamp = {0, 0, 0, 0};
-		WON_LOSS totStand = {0, 0, 0, 0};
-		
-		for (int i = 0; i < g_p.num_agents; i++) {
-//			printf("agent%4d  %4d %4d %4d  %5.3f", standings[i].agent, standings[i].games, standings[i].wins, standings[i].losses, 0.5f * (1.0f + (float)(standings[i].wins - standings[i].losses) / (float)standings[i].games));
-			printf("agent%4d  %4d %4d %4d  %5.3f", standings[i].agent, standings[i].games, standings[i].wins, standings[i].losses, winpct(standings[i]));
-			
-			totStand.games += standings[i].games;
-			totStand.wins += standings[i].wins;
-			totStand.losses += standings[i].losses;
-			
-			printf("  (%4d-%4d)    %+5d\n", vsChamp[standings[i].agent].wins,vsChamp[standings[i].agent].losses, vsChamp[standings[i].agent].wins - vsChamp[standings[i].agent].losses);
-			totChamp.games += vsChamp[standings[i].agent].games;
-			totChamp.wins += vsChamp[standings[i].agent].wins;
-			totChamp.losses += vsChamp[standings[i].agent].losses;
-		}
-		printf(" avg      %5d%5d%5d  %5.3f (%5.1f-%5.1f)   %+5.1f\n", totStand.games, totStand.wins, totStand.losses, winpct(totStand), (float)totChamp.wins / (float)g_p.num_agents, (float)totChamp.losses / (float)g_p.num_agents, (float)(totChamp.wins-totChamp.losses) / (float)g_p.num_agents);
-}
-
-RESULTS *runCPU(AGENT *agCPU)
+// Do a learning run on the CPU using agents in agCPU and benchmark weights in champ_wgts
+RESULTS *runCPU(AGENT *agCPU, float *champ_wgts)
 {
 	printf("running on CPU...\n");
 	
-	// log file for standings after each session
-	FILE *f = fopen(LEARNING_LOG_FILE, "w");
-	save_parameters(f);
+	// allocate the structure to hold the results
+	RESULTS *r = newResults(g_p);
 	
-	FILE *champFile = fopen(AGENT_FILE_CHAMP, "r");
-	unsigned champ_num_hidden = read_num_hidden(champFile);
-//	printf("champ from file %s has %d hidden nodes\n", AGENT_FILE_CHAMP, champ_num_hidden);
-	float *champ_wgts = (float *)malloc(champ_num_hidden * (2*g_p.board_size + 3) * sizeof(float));
-	read_wgts(champFile, champ_wgts);
-	fclose(champFile);
+//	FILE *champFile = fopen(AGENT_FILE_CHAMP, "r");
+//	unsigned champ_num_hidden = read_num_hidden(champFile);
+////	printf("champ from file %s has %d hidden nodes\n", AGENT_FILE_CHAMP, champ_num_hidden);
+//	float *champ_wgts = (float *)malloc(champ_num_hidden * (2*g_p.board_size + 3) * sizeof(float));
+//	read_wgts(champFile, champ_wgts);
+//	fclose(champFile);
 	
 	// each episode, the agent's weights are saved to be used as opponents
-	float *saved_wgts = (float *)malloc(g_p.num_agents * g_p.num_wgts * sizeof(float));
+//	float *saved_wgts = (float *)malloc(g_p.num_agents * g_p.num_wgts * sizeof(float));
 	
 	// standings holds the won/loss record during learning
-	WON_LOSS *standings = (WON_LOSS *)malloc(g_p.num_agents * sizeof(WON_LOSS));
+//	WON_LOSS *standings = (WON_LOSS *)malloc(g_p.num_agents * sizeof(WON_LOSS));
 	
 	// vsChamp hods won-loss record when each agent is run against the benchmark after learning
-	WON_LOSS *vsChamp = (WON_LOSS *)malloc(g_p.num_agents * sizeof(WON_LOSS));
+//	WON_LOSS *vsChamp = (WON_LOSS *)malloc(g_p.num_agents * sizeof(WON_LOSS));
 	
+	// lastWinner is the agent in first place after each learning session
 	unsigned lastWinner = 0;
 
-	printf("warm-up versus RAND\n");
+
+//	printf("warm-up versus RAND\n");
+//	dump_agentsCPU("prior to warmup", agCPU, 0);
 	for (int iAg = 0; iAg < g_p.num_agents; iAg++) {
 		unsigned save_num_pieces = g_p.num_pieces;
 		printf("agent %d learning against RAND ... ", iAg);
 		for (int p = 1; p <= save_num_pieces; p++) {
 			g_p.num_pieces = p;
 			printf(" %d ... ", p);
-			auto_learn(agCPU, iAg, NULL, g_p.num_pieces, g_p.warmup_length, g_p.max_turns, 0);
+			auto_learn(agCPU, iAg, NULL, g_p.num_pieces, g_p.warmup_length, g_p.max_turns, 0, agCPU->seeds + iAg, g_p.num_agents);
 		}
 		printf(" done\n");
 		g_p.num_pieces = save_num_pieces;
 	}
 
-//	unsigned ahl = ALPHA_HALF_LIFE;
 	for (int iSession = 0; iSession < g_p.num_sessions; iSession++) {
-//		if (0 == (iSession + 1)%ahl) {
-//			ahl *= 2;	// next half-life is twice as long
-//			// cut alpha in half very ahl sessions
-//			for (int i = 0; i < g_p.num_agents; i++) {
-//				agCPU->alpha[i] /= 2.0f;
-//			}
-//			printf("alpha reduced to %9.6f\n", agCPU->alpha[0]);
-//		}
-
 		// copy the current weights to the saved_wgts area
-		memcpy(saved_wgts, agCPU->wgts, g_p.num_agents * g_p.num_wgts * sizeof(float));
+		memcpy(agCPU->saved_wgts, agCPU->wgts, g_p.num_agents * g_p.num_wgts * sizeof(float));
 		
 		printf("\n********** Session %d **********\n", iSession);
 //		printf("g_p.num_hidden is %d\n", g_p.num_hidden);
 		// run a round-robin learning session
 		for (int iAg = 0; iAg < g_p.num_agents; iAg++) {
-			standings[iAg].agent= iAg;
-			standings[iAg].games = 0;
-			standings[iAg].wins = 0;
-			standings[iAg].losses = 0;
+			unsigned iStand = iSession * g_p.num_agents + iAg;
+			r->standings[iStand].agent= iAg;
+			r->standings[iStand].games = 0;
+			r->standings[iStand].wins = 0;
+			r->standings[iStand].losses = 0;
 			for (int iOp = 0; iOp < g_p.num_agents; iOp++) {
 				unsigned xOp = (iAg + iOp) % g_p.num_agents;
 //				printf("(%d vs %d) ", iAg, xOp);
-				WON_LOSS wl = auto_learn(agCPU, iAg, saved_wgts + xOp * g_p.num_wgts, g_p.num_pieces, g_p.episode_length, g_p.max_turns, g_p.num_hidden);
+				WON_LOSS wl = auto_learn(agCPU, iAg, agCPU->saved_wgts + xOp * g_p.num_wgts, g_p.num_pieces, g_p.episode_length, g_p.max_turns, g_p.num_hidden, agCPU->seeds + iAg, g_p.num_agents);
 //				printf("g_p.num_hidden is %d\n", g_p.num_hidden);
-				standings[iAg].games += wl.games;
-				standings[iAg].wins += wl.wins;
-				standings[iAg].losses += wl.losses;
-				// compete one extra game against previoius winner
-//				if (iSession > 0) {
-//					wl = auto_learn(agCPU, iAg, saved_wgts + prevWinner * g_p.num_wgts, g_p.num_pieces, g_p.episode_length * g_p.num_agents, g_p.max_turns, g_p.num_hidden);
-//					standings[iAg].games += wl.games;
-//					standings[iAg].wins += wl.wins;
-//					standings[iAg].losses += wl.losses;
-//				}
-//				printf("g_p.num_hidden is %d\n", g_p.num_hidden);
+				r->standings[iStand].games += wl.games;
+				r->standings[iStand].wins += wl.wins;
+				r->standings[iStand].losses += wl.losses;
 			}
 			
-			// compete against the champ
-			vsChamp[iAg] = compete(agCPU->wgts + iAg * g_p.num_wgts, NULL, champ_wgts, NULL, g_p.num_pieces, CHAMP_GAMES, g_p.max_turns, 0, champ_num_hidden);
-			
-			// compete (and learn) against the champ
-//			printf("before learning vs. champ: g_p.num_hidden is %d\n", g_p.num_hidden);
-//			vsChamp[iAg] = auto_learn(agCPU, iAg, champ_wgts, g_p.num_pieces, CHAMP_GAMES * g_p.max_turns / 2, g_p.max_turns, champ_num_hidden);
-//			printf("after learning vs. champ: g_p.num_hidden is %d\n", g_p.num_hidden);
+			// compete against the champ as a benchmark
+			r->vsChamp[iStand] = compete(agCPU->wgts + iAg * g_p.num_wgts, NULL, champ_wgts, NULL, g_p.num_pieces, CHAMP_GAMES, g_p.max_turns, 0, g_p.num_hidden, agCPU->seeds + iAg, g_p.num_agents);
 			
 			// write results to file
-			fprintf(f, "%d, %d, %d, %d, %d, %d, %d, %d\n", iSession, iAg, standings[iAg].games, standings[iAg].wins, standings[iAg].losses, vsChamp[iAg].games, vsChamp[iAg].wins, vsChamp[iAg].losses);
+//			fprintf(f, "%d, %d, %d, %d, %d, %d, %d, %d\n", iSession, iAg, r->standings[iStand].games, r->standings[iStand].wins, r->standings[iStand].losses, r->vsChamp[iStand].games, r->vsChamp[iStand].wins, r->vsChamp[iStand].losses);
 			
 		}
 		
-		print_standings(standings, vsChamp);
-
-//		qsort(standings, g_p.num_agents, sizeof(WON_LOSS), wl_compare);
-//		printf(    "             G    W    L    PCT");
-//		printf("   %4d games vs Champ\n", CHAMP_GAMES);
-//
-//		WON_LOSS totChamp = {0, 0, 0, 0};
-//		
-//		for (int i = 0; i < g_p.num_agents; i++) {
-//			printf("agent%4d  %4d %4d %4d  %5.3f", standings[i].agent, standings[i].games, standings[i].wins, standings[i].losses, 0.5f * (1.0f + (float)(standings[i].wins - standings[i].losses) / (float)standings[i].games));
-//			printf("   (%3d-%3d)     %+4d\n", vsChamp[standings[i].agent].wins,vsChamp[standings[i].agent].losses, vsChamp[standings[i].agent].wins - vsChamp[standings[i].agent].losses);
-//			totChamp.games += vsChamp[standings[i].agent].games;
-//			totChamp.wins += vsChamp[standings[i].agent].wins;
-//			totChamp.losses += vsChamp[standings[i].agent].losses;
-//		}
-//		printf("                        average: (%5.1f-%5.1f)   %+5.1f\n", (float)totChamp.wins / (float)g_p.num_agents, (float)totChamp.losses / (float)g_p.num_agents, (float)(totChamp.wins-totChamp.losses) / (float)g_p.num_agents);
-
-		// remember the best agent so far
-		lastWinner = standings[0].agent;
+		// sort and print the standings
+		print_standings(r->standings + iSession * g_p.num_agents, r->vsChamp + iSession * g_p.num_agents);
+		
+		// remember the winner after this session
+		lastWinner = r->standings[iSession * g_p.num_agents + 0].agent;
 	}
 	
-	// write the best agent to the AGENT_FILE_OUT
-	FILE *agfile = fopen(AGENT_FILE_OUT, "w");
-	save_agent(agfile, agCPU, lastWinner);
-	fclose(agfile);
+//	// write the best agent to the AGENT_FILE_OUT
+//	FILE *agfile = fopen(AGENT_FILE_OUT, "w");
+//	save_agent(agfile, agCPU, lastWinner);
+//	fclose(agfile);
 
 	// as a final test, see if the last winner can beat the champ over 1000 games
-	WON_LOSS wlChamp = compete(agCPU->wgts + lastWinner * g_p.num_wgts, "CHALLENGER", champ_wgts, "CHAMP", g_p.num_pieces, 1000, g_p.max_turns, 0, champ_num_hidden);
+	WON_LOSS wlChamp = compete(agCPU->wgts + lastWinner * g_p.num_wgts, "CHALLENGER", champ_wgts, "CHAMP", g_p.num_pieces, 1000, g_p.max_turns, 0, g_p.num_hidden, agCPU->seeds + lastWinner, g_p.num_agents);
 	printf("CHALLENGER v CHAMP  G: %d  W: %d  L: %d    %+4d   ", wlChamp.games, wlChamp.wins, wlChamp.losses, wlChamp.wins - wlChamp.losses);
 
 	if (wlChamp.wins < wlChamp.losses) {
@@ -1552,35 +1373,20 @@ RESULTS *runCPU(AGENT *agCPU)
 #ifdef SHOW_SAMPLE_GAMES_AFTER_LEARNING
 	compete(agCPU->wgts + lastWinner * g_p.num_wgts, "BEST", agCPU->wgts + lastWinner * g_p.num_wgts, "BEST", g_p.num_pieces, SHOW_SAMPLE_GAMES_AFTER_LEARNING, g_p.max_turns, 1);
 #endif
-	fclose(f);
-	free(saved_wgts);
-	free(standings);
-	free(champ_wgts);
-	return NULL;
+//	fclose(f);
+//	free(standings);
+//	free(champ_wgts);
+	
+	r->iBest = lastWinner;
+	return r;
 }
 
 
 #pragma mark -
 #pragma mark GPU - Only
 
-AGENT *init_agentsGPU(AGENT *agCPU)
-{
-	AGENT *agGPU = (AGENT *)malloc(sizeof(AGENT));
-	agGPU->seeds = device_copyui(agCPU->seeds, 4 * g_p.num_agents);
-	agGPU->wgts = device_copyf(agCPU->wgts, g_p.num_agent_floats * g_p.num_agents);
-	set_agent_float_pointers(agGPU);
-	
-	cudaMemcpyToSymbol("dc_ag", &agGPU, sizeof(AGENT));
-	cudaMemcpyToSymbol("dc_gamma", &g_p.gamma, sizeof(float));
-	cudaMemcpyToSymbol("dc_num_hidden", &g_p.num_hidden, sizeof(unsigned));
-	cudaMemcpyToSymbol("dc_state_size", &g_p.state_size, sizeof(unsigned));
-	cudaMemcpyToSymbol("dc_board_size", &g_p.board_size, sizeof(unsigned));
-	cudaMemcpyToSymbol("dc_num_wgts", &g_p.num_wgts, sizeof(unsigned));
-	return agGPU;
-}
 
-
-RESULTS *runGPU(AGENT *agGPU)
+RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 {
 	printf("running on GPU...\n");
 	return NULL;

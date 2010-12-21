@@ -1,10 +1,12 @@
 Today's Goals
 
-get rid of ranf() calls in compete and auto_learn
-
 Clean-up CPU version of code
 
-		Do program for straight competition among a list of saved agents
+
+
+Add ability to have varying num_hidden by agent
+
+
 
 Processing
 

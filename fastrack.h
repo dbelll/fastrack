@@ -80,18 +80,18 @@ typedef struct {
 	unsigned state_size;		// 2 * board_size
 	unsigned num_wgts;			// num_hidden * (2*board_size + 3) = space used for weight array
 								// this value is the stride between agent's weight blocks
-	unsigned num_agent_floats;	// (2*alloc_wgts + 3) = total size of agent float data
+	unsigned num_agent_floats;	// (3*alloc_wgts + 3) = total size of agent float data
 								// (wgts and e and  alpha, epsilon, and lambda)
 	unsigned timesteps;			// num_sessions * num_agents * episode_length
 	unsigned agent_timesteps;	// num_agents * timesteps
 	
+	const char *champ;		// name of file with champ's weights
 } PARAMS;
 
 
 // AGENT structure is used to consolidate the pointers to all agent data.  Pointers may be
 // all host pointers or all device pointers.
 typedef struct{
-//	unsigned *state;	// state (num_agents * g_p.state_size)
 	unsigned *seeds;	// random number seeds for each agent (num_agents * 4)
 	float *wgts;		// nn wgts for each agent (num_agents * num_wgts)
 	float *e;			// eligibility trace (num_agents * num_wgts)
@@ -101,24 +101,19 @@ typedef struct{
 	float *lambda;		// agent-specific lambda value (num_agents)
 } AGENT;
 
-typedef struct {
-	unsigned *seeds;	// pointer to four seeds
-	float *fdata;		// pointer to all float values
-	unsigned num_wgts;	// number of weights (and of W)
-	unsigned iWgts;		// index in fData to beginning of wgts
-	unsigned iE;		// index in fData to beginning of eligibility trace
-	unsigned iAlpha;	// index in fData to alpha
-	unsigned iEpsilon;	// index in fData to epsilon
-	unsigned iLambda;	// index in fData to lambda
-} COMPACT_AGENT;
+//typedef struct {
+//	unsigned *seeds;	// pointer to four seeds
+//	float *fdata;		// pointer to all float values
+//	unsigned num_wgts;	// number of weights (and of W)
+//	unsigned iWgts;		// index in fData to beginning of wgts
+//	unsigned iE;		// index in fData to beginning of eligibility trace
+//	unsigned iAlpha;	// index in fData to alpha
+//	unsigned iEpsilon;	// index in fData to epsilon
+//	unsigned iLambda;	// index in fData to lambda
+//} COMPACT_AGENT;
 
 
-// RESULTS holds pointers to the results of the learning, which are always on the CPU
-typedef struct {
-	unsigned allocated;	// number of allocated agents 
-	COMPACT_AGENT *best;				// best agent after each episode
-} RESULTS;
-
+// structure to hold the won-loss record of a competition of learning episode for an agent
 typedef struct {
 	int agent;
 	int games;
@@ -126,12 +121,21 @@ typedef struct {
 	int losses;
 } WON_LOSS;
 
+// RESULTS holds pointers to the results of the learning, which are always on the CPU
+typedef struct {
+	PARAMS p;				// global parameters used for this run
+	WON_LOSS *standings;	// WON_LOSS structures for each agent after each learning session.
+	WON_LOSS *vsChamp;		// WON_LOSS structures for each agent after each learning session with
+							// the results of competing against the benchmark opponent
+	unsigned iBest;			// index number for best agent this run
+} RESULTS;
+
 AGENT *init_agentsCPU(PARAMS p);
 AGENT *init_agentsGPU(AGENT *agCPU);
-void dump_agentsCPU(const char *str, AGENT *agCPU, unsigned dumpW);
+float *load_champ(const char *file);
+void save_agent(const char *file, AGENT *agCPU, unsigned iAg);
 
 void freeAgentCPU(AGENT *ag);
-void freeCompactAgent(COMPACT_AGENT *ag);
 void freeAgentGPU(AGENT *ag);
 
 RESULTS *newResults(PARAMS *p);
@@ -140,8 +144,8 @@ void freeResults(RESULTS *r);
 
 unsigned *start_state();
 void dump_state(unsigned *state);
-void dump_board(unsigned *board);
+//void dump_board(unsigned *board);
 
-RESULTS *runCPU(AGENT *ag);
-RESULTS *runGPU(AGENT *ag);
+RESULTS *runCPU(AGENT *ag, float *champ_wgts);
+RESULTS *runGPU(AGENT *ag, float *champ_wgts);
 
