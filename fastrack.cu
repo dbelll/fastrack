@@ -168,6 +168,16 @@ char char_for_index(unsigned i, unsigned *state)
 	return '.';
 }
 
+char char_for_board(unsigned row, unsigned col, unsigned *board)
+{
+	unsigned index = index4rc(row, col);
+//	printf("index for row %d, col%d is %d\n", row, col, index);
+//	printf("value of board there is %d\n", board[index]);
+	char ch = board[index] ? 'X' : '.';
+//	printf("char_for_board row=%d, col=%d is %c\n", row, col, ch);
+	return ch;
+}
+
 char char_for_cell(unsigned row, unsigned col, unsigned *state)
 {
 	return char_for_index(index4rc(row, col), state);
@@ -517,6 +527,38 @@ void dump_state(unsigned *state, unsigned turn, unsigned nextToPlay)
 	dump_col_header(3, g_p.board_width);
 }
 
+// dump the board, using X for pieces
+void dump_board(unsigned *board)
+{
+	dump_col_header(3, g_p.board_width);
+	for (int row = g_p.board_height - 1; row >= 0; row--) {
+		printf("%2u ", row+1);
+		for (int col = 0; col < g_p.board_width; col++) {
+			printf(" %c", char_for_board(row, col, board));
+		}
+		printf("%3u", row+1);
+		printf("\n");
+	}
+	dump_col_header(3, g_p.board_width);
+}
+
+void dump_boards(unsigned *board, unsigned n)
+{
+	for (int i = 0; i < n; i++) {
+		printf("board %d:\n", i);
+		dump_board(board + i * g_p.board_size);
+	}
+}
+
+void dump_boardsGPU(unsigned *board, unsigned n)
+{
+	printf("dumping %d boards at %p\n", n, board);
+	
+	unsigned *boardsCPU = host_copyui(board, n * g_p.board_size);
+	host_dumpui("boards copied to host", boardsCPU, n * g_p.board_height, g_p.board_width);
+	dump_boards(boardsCPU, n);
+	free(boardsCPU);
+}
 
 void dump_wgts_header(const char *str)
 {
@@ -750,8 +792,8 @@ AGENT *init_agentsCPU(PARAMS p)
 	// allocate and initialize the agent data on CPU
 	AGENT *ag = (AGENT *)malloc(sizeof(AGENT));
 
-	ag->seeds = (unsigned *)malloc(4 * p.num_agents * sizeof(unsigned));
-	for (int i = 0; i < 4*p.num_agents; i++) ag->seeds[i] = rand();
+	ag->seeds = (unsigned *)malloc(4 * p.num_agents * p.board_size * sizeof(unsigned));
+	for (int i = 0; i < 4*p.num_agents * p.board_size; i++) ag->seeds[i] = rand();
 	
 	ag->wgts = (float *)malloc(p.num_agent_floats * p.num_agents * sizeof(float));
 	set_agent_float_pointers(ag);	
@@ -768,7 +810,7 @@ AGENT *init_agentsCPU(PARAMS p)
 AGENT *init_agentsGPU(AGENT *agCPU)
 {
 	AGENT *agGPU = (AGENT *)malloc(sizeof(AGENT));
-	agGPU->seeds = device_copyui(agCPU->seeds, 4 * g_p.num_agents);
+	agGPU->seeds = device_copyui(agCPU->seeds, 4 * g_p.num_agents * g_p.board_size);
 	agGPU->wgts = device_copyf(agCPU->wgts, g_p.num_agent_floats * g_p.num_agents);
 	set_agent_float_pointers(agGPU);
 	
@@ -1388,10 +1430,100 @@ RESULTS *runCPU(AGENT *agCPU, float *champ_wgts)
 #pragma mark -
 #pragma mark GPU - Only
 
+// return a random number from 0 to n-1
+__device__ unsigned rand_num(unsigned nn, unsigned *seeds, unsigned stride)
+{
+//	unsigned r = n;
+//	
+//	// mask1 masks off the bits that are needed for a number from [0 to n-1]
+//	unsigned mask = 1;
+//	while (mask < n) {
+//		mask <<= 1;
+//	}
+//	mask -= 1;
+//	do {
+//		r = RandUniformui(seeds, stride) & mask;
+//	} while (r >= n);
+	unsigned r = RandUniformui(seeds, stride) % nn;
+	return r;
+}
+
+// thread x dimension is 0 to board_size-1
+// block x dimension is the board number
+__global__ void randboard_kernel(unsigned *board, unsigned num_pieces, unsigned board_size, unsigned *seeds, unsigned stride)
+{
+	unsigned idx = threadIdx.x;
+	unsigned iGlobal = idx + blockIdx.x * board_size;
+	
+	__shared__ float s_state[MAX_BOARD_SIZE];
+	__shared__ unsigned s_count[MAX_BOARD_SIZE];
+	
+	if (idx < board_size){
+		// set state and count to 0
+		s_state[idx] = 0;
+		s_count[idx] = 0;
+		// each thread flips its bit randomly
+		if (0.5f > RandUniform(seeds + iGlobal, stride)){
+			s_state[idx] = 1;
+		}
+	}
+	__syncthreads();
+		
+	// count the number of pieces, storing total in s_count[0]
+	if (idx < board_size) s_count[idx] = s_state[idx];
+	unsigned half = 1;
+	while (half < board_size) {
+		half <<= 1;
+	}
+	half >>= 1;	// half is now the biggest power of 2 less than board_size
+	while(half > 0){
+		if ((idx < half) && ((idx + half) < board_size)) {
+			s_count[idx] += s_count[idx + half];
+		}
+		half >>= 1;
+		__syncthreads();
+	}
+		
+		// thread 0 will make the final adjustments by turning cells on or off
+	unsigned n = s_count[0];
+	if(idx == 0){
+		unsigned r;
+		while (n > num_pieces) {
+			// too many pieces, randomly remove some
+			r = rand_num(board_size, seeds + iGlobal, stride);
+			if (s_state[r] == 1) { s_state[r] = 0; --n;}
+		}
+		while (n < num_pieces){
+			r = rand_num(board_size, seeds + iGlobal, stride);
+			if (s_state[r] == 0) { s_state[r] = 1; ++n;}
+		}
+	}
+	__syncthreads();
+	
+	// copy the result to the board
+	if(idx < board_size) board[iGlobal] = s_state[idx];
+}
 
 RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 {
 	printf("running on GPU...\n");
+	printf("MAX_BOARD_SIZE %d\n", MAX_BOARD_SIZE);
+	// generate a random board
+	unsigned *d_board = device_allocui(g_p.board_size * g_p.num_agents);
+	
+	unsigned thx = 1;
+	while (thx < g_p.board_size){
+		 thx <<= 1;
+	}
+		printf("thx = %d\n", thx);
+	dim3 blockDim(thx);
+	dim3 gridDim(g_p.num_agents);
+	printf("bockDim is (%dx%d) and gridDim is (%dx%d)\n", blockDim.x, blockDim.y, gridDim.x, gridDim.y);
+	randboard_kernel<<<gridDim, blockDim>>>(d_board, g_p.num_pieces, g_p.board_size, agGPU->seeds, g_p.num_agents * g_p.board_size);
+	
+	device_dumpui("raw boards on device", d_board, g_p.board_height * g_p.num_agents, g_p.board_width);
+	dump_boardsGPU(d_board, g_p.num_agents);
+	
 	return NULL;
 }
 

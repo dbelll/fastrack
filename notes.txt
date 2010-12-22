@@ -1,6 +1,7 @@
 Today's Goals
 
-Clean-up CPU version of code
+	Implement GPU version of the code
+		
 
 
 

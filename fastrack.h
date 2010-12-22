@@ -30,8 +30,7 @@
 #define MOVES_JUMP_DIAG {{0, 1}, {2, 2}, {1, 0}, {2, -2}, {0, -1}, {-2, -2}, {-1, 0}, {-2, 2}}
 #define MOVES_JUMP_ORTHO {{0, 2}, {1, 1}, {2, 0}, {1, -1}, {0, -2}, {-1, -1}, {-2, 0}, {-1, 1}}
 
-#define MAX_STATE_SIZE 4
-#define MAX_BOARD_INTS 2
+#define MAX_BOARD_SIZE MAX_BOARD_DIMENSION * MAX_BOARD_DIMENSION
 
 #define MAX_MOVES 8			// the maximum number of possible moves in the piece move definitions
 

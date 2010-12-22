@@ -106,7 +106,7 @@ unsigned *host_copyui(unsigned *d_data, unsigned count_data)
 	unsigned size_data = count_data * sizeof(unsigned);
 	unsigned *data = (unsigned *)malloc(size_data);
 	#ifdef TRACE_DEVICE_ALLOCATIONS
-		printf("[host_copyui] unsigned data at 0x%p count = %d\n", d_data, size_data);
+		printf("[host_copyui] unsigned data at 0x%p count = %d\n", d_data, count_data);
 	#endif
 	CUDA_SAFE_CALL(cudaMemcpy(data, d_data, size_data, cudaMemcpyDeviceToHost));
 	return data;
