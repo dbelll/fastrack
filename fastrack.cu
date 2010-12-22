@@ -472,7 +472,7 @@ float *load_champ(const char *file)
 	}
 	
 	// allocate an array of the appropriate size to hold champ's weights
-	unsigned num_wgts = read_num_hidden(f);
+	unsigned num_wgts = read_num_wgts(f);
 	float *wgts = (float *)malloc(num_wgts * sizeof(float));
 	
 	// now read the weights from the file to fill the array
@@ -1329,8 +1329,11 @@ RESULTS *runCPU(AGENT *agCPU, float *champ_wgts)
 			r->standings[iStand].games = 0;
 			r->standings[iStand].wins = 0;
 			r->standings[iStand].losses = 0;
-			for (int iOp = 0; iOp < g_p.num_agents; iOp++) {
+//			for (int iOp = 0; iOp < g_p.num_agents; iOp++) {
+//				unsigned xOp = (iAg + iOp) % g_p.num_agents;
+			for (int iOp = 0; iOp < g_p.num_agents/((iSession > 0) ? 2 : 1); iOp++) {
 				unsigned xOp = (iAg + iOp) % g_p.num_agents;
+				if (iSession > 0) xOp = r->standings[(iSession-1) * g_p.num_agents + iOp].agent;
 //				printf("(%d vs %d) ", iAg, xOp);
 				WON_LOSS wl = auto_learn(agCPU, iAg, agCPU->saved_wgts + xOp * g_p.num_wgts, g_p.num_pieces, g_p.episode_length, g_p.max_turns, g_p.num_hidden, agCPU->seeds + iAg, g_p.num_agents);
 //				printf("g_p.num_hidden is %d\n", g_p.num_hidden);

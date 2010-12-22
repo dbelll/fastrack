@@ -14,7 +14,7 @@
 
 #define LEARNING_LOG_FILE "standings.csv"
 #define AGENT_FILE_OUT "knight_out.agent"
-#define AGENT_FILE_CHAMP "knight57n4v08.agent"
+#define AGENT_FILE_CHAMP "knight57n6v01.agent"
 #define CHAMP_GAMES 1000
 
 #define REWARD_WIN 1.00f
@@ -132,6 +132,7 @@ typedef struct {
 
 AGENT *init_agentsCPU(PARAMS p);
 AGENT *init_agentsGPU(AGENT *agCPU);
+void dump_agentsCPU(const char *str, AGENT *agCPU, unsigned dumpW);
 float *load_champ(const char *file);
 void save_agent(const char *file, AGENT *agCPU, unsigned iAg);
 

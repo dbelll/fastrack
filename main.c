@@ -139,6 +139,7 @@ int main(int argc, const char **argv)
 	
 	// initialize agents on CPU and GPU
 	AGENT *agCPU = init_agentsCPU(p);
+//	dump_agentsCPU("after initialization", agCPU, 0);
 	AGENT *agGPU = NULL;
 	if (p.run_on_GPU) {
 		agGPU = init_agentsGPU(agCPU);
@@ -146,6 +147,7 @@ int main(int argc, const char **argv)
 
 	// load champ weights for benchmark testing
 	float *champ_wgts = load_champ(AGENT_FILE_CHAMP);
+//	dump_agentsCPU("after load_champ", agCPU, 0);
 	
 	RESULTS *resultsCPU = NULL;
 	RESULTS *resultsGPU = NULL;
