@@ -31,6 +31,7 @@
 #define MOVES_JUMP_ORTHO {{0, 2}, {1, 1}, {2, 0}, {1, -1}, {0, -2}, {-1, -1}, {-2, 0}, {-1, 1}}
 
 #define MAX_BOARD_SIZE MAX_BOARD_DIMENSION * MAX_BOARD_DIMENSION
+#define MAX_STATE_SIZE 2 * MAX_BOARD_SIZE
 
 #define MAX_MOVES 8			// the maximum number of possible moves in the piece move definitions
 
@@ -77,6 +78,7 @@ typedef struct {
 	// calculated values
 	unsigned board_size;		// board_width * board_height
 	unsigned state_size;		// 2 * board_size
+	unsigned half_board_size;	// biggest power of two less than board_size
 	unsigned num_wgts;			// num_hidden * (2*board_size + 3) = space used for weight array
 								// this value is the stride between agent's weight blocks
 	unsigned num_agent_floats;	// (3*alloc_wgts + 3) = total size of agent float data

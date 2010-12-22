@@ -95,6 +95,9 @@ PARAMS read_params(int argc, const char **argv)
 	p.max_turns = GET_PARAM("MAX_TURNS", 10);
 	p.board_size = p.board_width * p.board_height;	// number of cells on the board
 	p.state_size = 2 * p.board_size;
+	p.half_board_size = 1;
+	while (p.half_board_size < p.board_size) p.half_board_size <<= 1;
+	p.half_board_size >>= 1;
 	
 	p.num_hidden = GET_PARAM("NUM_HIDDEN", 32);
 	p.init_wgt_min = GET_PARAM("INIT_WGT_MIN", -.1);

@@ -37,9 +37,13 @@ __constant__ AGENT dc_ag;
 
 __constant__ float dc_gamma;
 __constant__ unsigned dc_num_hidden;
+__constant__ unsigned dc_num_pieces;
 __constant__ unsigned dc_state_size;
 __constant__ unsigned dc_board_size;
+__constant__ unsigned dc_half_board_size;
 __constant__ unsigned dc_num_wgts;
+__constant__ float dc_piece_ratioX;	// ratio of num_pieces to board_size
+__constant__ float dc_piece_ratioO;	// ratio of num_pieces to (board_size - num_pieces)
 
 #pragma mark -
 #pragma mark Helpers
@@ -550,6 +554,14 @@ void dump_boards(unsigned *board, unsigned n)
 	}
 }
 
+void dump_states(unsigned *state, unsigned n)
+{
+	for (int i = 0; i < n; i++) {
+		printf("state %d:\n", i);
+		dump_state(state + i * g_p.state_size, 0, 0);
+	}
+}
+
 void dump_boardsGPU(unsigned *board, unsigned n)
 {
 	printf("dumping %d boards at %p\n", n, board);
@@ -558,6 +570,16 @@ void dump_boardsGPU(unsigned *board, unsigned n)
 	host_dumpui("boards copied to host", boardsCPU, n * g_p.board_height, g_p.board_width);
 	dump_boards(boardsCPU, n);
 	free(boardsCPU);
+}
+
+void dump_statesGPU(unsigned *state, unsigned n)
+{
+	printf("dumping %d states at %p\n", n, state);
+	
+	unsigned *statesCPU = host_copyui(state, n * g_p.state_size);
+	host_dumpui("states copied to host", statesCPU, 2 * n * g_p.board_height, g_p.board_width);
+	dump_states(statesCPU, n);
+	free(statesCPU);
 }
 
 void dump_wgts_header(const char *str)
@@ -817,9 +839,23 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 	cudaMemcpyToSymbol("dc_ag", &agGPU, sizeof(AGENT));
 	cudaMemcpyToSymbol("dc_gamma", &g_p.gamma, sizeof(float));
 	cudaMemcpyToSymbol("dc_num_hidden", &g_p.num_hidden, sizeof(unsigned));
+	cudaMemcpyToSymbol("dc_num_pieces", &g_p.num_pieces, sizeof(unsigned));
 	cudaMemcpyToSymbol("dc_state_size", &g_p.state_size, sizeof(unsigned));
 	cudaMemcpyToSymbol("dc_board_size", &g_p.board_size, sizeof(unsigned));
 	cudaMemcpyToSymbol("dc_num_wgts", &g_p.num_wgts, sizeof(unsigned));
+	
+	unsigned half_board_size = 1;
+	while (half_board_size < g_p.board_size) {
+		half_board_size <<= 1;
+	}
+	half_board_size >>=1;	// now half_board_size is the largest power of two less board_size
+	cudaMemcpyToSymbol("dc_half_board_size", &half_board_size, sizeof(unsigned));
+	
+	float piece_ratioX = (float)g_p.num_pieces / (float)g_p.board_size;
+	float piece_ratioO = (float)g_p.num_pieces / (float)(g_p.board_size - g_p.num_pieces);
+	cudaMemcpyToSymbol("dc_piece_ratioX", &piece_ratioX, sizeof(float));
+	cudaMemcpyToSymbol("dc_piece_ratioO", &piece_ratioO, sizeof(float));
+	
 	return agGPU;
 }
 
@@ -1448,81 +1484,137 @@ __device__ unsigned rand_num(unsigned nn, unsigned *seeds, unsigned stride)
 	return r;
 }
 
-// thread x dimension is 0 to board_size-1
-// block x dimension is the board number
-__global__ void randboard_kernel(unsigned *board, unsigned num_pieces, unsigned board_size, unsigned *seeds, unsigned stride)
+// Fill in the board with random pieces (uses dc_board_size and dc_num_pieces)
+//		s_board points to the board for this agent
+//		s_temp is a temporary area of size board_size/2
+//		idx is the thread number which represents the cell
+//		seeds points to 1st seed for this agent
+//		stride is the stride of seeds
+__device__ void random_board(unsigned *s_board, unsigned *s_temp, unsigned idx, unsigned *seeds, unsigned stride)
 {
-	unsigned idx = threadIdx.x;
-	unsigned iGlobal = idx + blockIdx.x * board_size;
-	
-	__shared__ float s_state[MAX_BOARD_SIZE];
-	__shared__ unsigned s_count[MAX_BOARD_SIZE];
-	
-	if (idx < board_size){
-		// set state and count to 0
-		s_state[idx] = 0;
-		s_count[idx] = 0;
-		// each thread flips its bit randomly
-		if (0.5f > RandUniform(seeds + iGlobal, stride)){
-			s_state[idx] = 1;
-		}
-	}
+	// randomly add pieces to some cells using probability dc_piece_ratio
+	if (idx < dc_board_size && dc_piece_ratioX > RandUniform(seeds + idx, stride))
+			s_board[idx] = 1;
+	else s_board[idx] = 0;
+
 	__syncthreads();
-		
-	// count the number of pieces, storing total in s_count[0]
-	if (idx < board_size) s_count[idx] = s_state[idx];
-	unsigned half = 1;
-	while (half < board_size) {
-		half <<= 1;
-	}
-	half >>= 1;	// half is now the biggest power of 2 less than board_size
-	while(half > 0){
-		if ((idx < half) && ((idx + half) < board_size)) {
-			s_count[idx] += s_count[idx + half];
+	
+	// count the number of 1's
+	unsigned half = dc_half_board_size;
+	if (idx < half) s_temp[idx] = s_board[idx];
+	if (idx + half < dc_board_size) s_temp[idx] += s_board[idx + half];
+	__syncthreads();
+	while (0 < (half >>= 1)) {
+		if (idx < half) {
+			s_temp[idx] += s_temp[idx + half];
 		}
-		half >>= 1;
 		__syncthreads();
 	}
-		
-		// thread 0 will make the final adjustments by turning cells on or off
-	unsigned n = s_count[0];
-	if(idx == 0){
+	// s_temp[0] now contains the number of 1's
+	
+	if (idx == 0) {
 		unsigned r;
-		while (n > num_pieces) {
-			// too many pieces, randomly remove some
-			r = rand_num(board_size, seeds + iGlobal, stride);
-			if (s_state[r] == 1) { s_state[r] = 0; --n;}
+		while (s_temp[0] > dc_num_pieces) {
+			r = rand_num(dc_board_size, seeds + idx, stride);
+			if (s_board[r] == 1) { s_board[r] = 0; --s_temp[0];}
 		}
-		while (n < num_pieces){
-			r = rand_num(board_size, seeds + iGlobal, stride);
-			if (s_state[r] == 0) { s_state[r] = 1; ++n;}
+		while (s_temp[0] < dc_num_pieces) {
+			r = rand_num(dc_board_size, seeds + idx, stride);
+			if (s_board[r] == 0) { s_board[r] = 1; ++s_temp[0];}
 		}
 	}
 	__syncthreads();
+}
+
+
+__device__ void random_board_masked(unsigned *s_board, unsigned *s_mask, unsigned *s_temp, unsigned idx, unsigned *seeds, unsigned stride)
+{
+	if (idx < dc_board_size && dc_piece_ratioO > RandUniform(seeds + idx, stride) && !s_mask[idx])
+		s_board[idx] = 1;
+	else s_board[idx] = 0;
+	__syncthreads();
 	
-	// copy the result to the board
-	if(idx < board_size) board[iGlobal] = s_state[idx];
+	// count the number of ones
+	unsigned half = dc_half_board_size;
+	if (idx < half) s_temp[idx] = s_board[idx];
+	if (idx + half < dc_board_size) s_temp[idx] += s_board[idx + half];
+	__syncthreads();
+	while (0 < (half >>= 1)) {
+		if (idx < half) s_temp[idx] += s_temp[idx + half];
+		__syncthreads();
+	}
+	// s_temp[0] now contains the number of 1's
+	
+	if (idx == 0) {
+		unsigned r;
+		while (s_temp[0] > dc_num_pieces) {
+			r = rand_num(dc_board_size, seeds + idx, stride);
+			if (s_board[r] == 1) { s_board[r] = 0; --s_temp[0];}
+		}
+		while (s_temp[0] < dc_num_pieces) {
+			r = rand_num(dc_board_size, seeds + idx, stride);
+			if (s_board[r] == 0 && s_mask[r] == 0){ s_board[r] = 1; ++s_temp[0];}
+		}
+	}
+	__syncthreads();
+}
+
+__device__ void random_state(unsigned *s_state, unsigned *s_temp, unsigned idx, unsigned *seeds, unsigned stride)
+{
+	random_board(s_state, s_temp, idx, seeds + idx, dc_board_size);
+	random_board_masked(s_state + dc_board_size, s_state, s_temp, idx, seeds + idx, dc_board_size);
+}
+
+
+// one thread block per state with at least board_size threads
+__global__ void randstate_kernel(unsigned *state, unsigned *seeds)
+{
+	unsigned idx = threadIdx.x;
+	unsigned iAgent = blockIdx.x * dc_state_size;
+	
+	__shared__ unsigned s_state[MAX_STATE_SIZE];
+	__shared__ unsigned s_temp[MAX_BOARD_SIZE];
+	
+	random_state(s_state, s_temp, idx, seeds + iAgent * 2, dc_board_size);
+	if (idx < dc_state_size) 
+		state[iAgent + idx] = s_state[idx];
+	if (blockDim.x < dc_state_size && (idx + blockDim.x) < dc_state_size)
+		state[iAgent + idx + blockDim.x] = s_state[idx + blockDim.x];
+}
+
+// thread x dimension is 0 to board_size-1
+// block x dimension is the board number
+__global__ void randboard_kernel(unsigned *board, unsigned *seeds)
+{
+	unsigned idx = threadIdx.x;
+	unsigned iAgent = blockIdx.x * dc_board_size;		// agent number times board_size
+	
+	__shared__ unsigned s_board[MAX_BOARD_SIZE];
+	__shared__ unsigned s_temp[MAX_BOARD_SIZE];
+	random_board(s_board, s_temp, idx, seeds + iAgent * 4, dc_board_size);
+
+	// copy the result to global memory
+	if(idx < dc_board_size) board[iAgent + idx] = s_board[idx];
 }
 
 RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 {
 	printf("running on GPU...\n");
-	printf("MAX_BOARD_SIZE %d\n", MAX_BOARD_SIZE);
 	// generate a random board
-	unsigned *d_board = device_allocui(g_p.board_size * g_p.num_agents);
+	unsigned *d_state = device_allocui(g_p.state_size * g_p.num_agents);
 	
 	unsigned thx = 1;
-	while (thx < g_p.board_size){
+	while (thx < g_p.state_size){
 		 thx <<= 1;
 	}
-		printf("thx = %d\n", thx);
-	dim3 blockDim(thx);
+	printf("thx = %d\n", thx);
+	dim3 blockDim(g_p.board_size);
 	dim3 gridDim(g_p.num_agents);
 	printf("bockDim is (%dx%d) and gridDim is (%dx%d)\n", blockDim.x, blockDim.y, gridDim.x, gridDim.y);
-	randboard_kernel<<<gridDim, blockDim>>>(d_board, g_p.num_pieces, g_p.board_size, agGPU->seeds, g_p.num_agents * g_p.board_size);
+	randstate_kernel<<<gridDim, blockDim>>>(d_state, agGPU->seeds);
 	
-	device_dumpui("raw boards on device", d_board, g_p.board_height * g_p.num_agents, g_p.board_width);
-	dump_boardsGPU(d_board, g_p.num_agents);
+	device_dumpui("raw state on device", d_state, 2 * g_p.board_height * g_p.num_agents, g_p.board_width);
+	dump_statesGPU(d_state, g_p.num_agents);
 	
 	return NULL;
 }
