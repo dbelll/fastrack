@@ -41,11 +41,20 @@
 #ifndef __CUDA_UTILS_H__
 #define __CUDA_UTILS_H__
 
+#pragma mark -
+#pragma mark Flags to turn stuff on and off
 // define this symbol to print a message at all device_copyx calls
-#define TRACE_DEVICE_ALLOCATIONS
+//#define TRACE_DEVICE_ALLOCATIONS
+
+// define these symbols to turn on pre-kernel messages and post-kernel error checking
+#define __PRE_KERNEL_ON
+#define __POST_KERNEL_ON
 
 static int __iTemp;			// used in GET_PARAM macros
 static float __fTemp;		// used in GET_PARAM macros
+
+#pragma mark -
+#pragma mark memory allocating, dumping, copying
 
 // macros to read command line arguments or use a default value
 // This macro assums argc and argv are their normal values found in main()
@@ -57,11 +66,15 @@ static float __fTemp;		// used in GET_PARAM macros
 // returned pointer must be ultimately freed on the device
 float *device_copyf(float *data, unsigned count);
 unsigned *device_copyui(unsigned *data, unsigned count);
+int *device_copyi(int *data, unsigned count);
 
 // allocate room on the device, returning the device pointer
 // returned pointer must be ultimately freed on the device
 float *device_allocf(unsigned count);
 unsigned *device_allocui(unsigned count);
+unsigned *device_alloc_filledui(unsigned count, unsigned val);
+
+void device_fillf(float val, float *d_data, unsigned count);
 
 // allocate room on the host and copy data from device, returning the host pointer
 // returned pointer must be ultimately freed on the host
@@ -74,6 +87,16 @@ void device_dumpf(const char *str, float *data, unsigned nRows, unsigned nCols);
 void host_dumpui(const char *str, unsigned *data, unsigned nRows, unsigned nCols);
 void device_dumpui(const char *str, unsigned *data, unsigned nRows, unsigned nCols);
 
+#ifdef TRACE_DEVICE_ALLOCATIONS
+
+#define deviceFree(d_data) printf("[device_free] data at %p\n", d_data);	\
+							cudaFree(d_data);
+
+#else
+
+#define deviceFree(d_data) cudaFree(d_data)
+
+#endif
 
 
 // Macros for calculating timing values.
@@ -116,4 +139,61 @@ void PRINT_TIME(float time, char *message);
 #define CUDA_EVENT_CLEANUP	cudaEventDestroy(__start);	\
 							cudaEventDestroy(__stop);
 
+#define CUDA_EVENT_STOP2(t, str)	CUDA_EVENT_STOP(t);		\
+									CUT_CHECK_ERROR(#str" execution failed!");
+
+
+// CUDA_EVENTN_... macros can be used to manage n timers
+#define CUDA_EVENTN_PREPARE(n)	cudaEvent_t __start2[n], __stop2[n];	\
+									float __timeTemp2[n];				\
+									unsigned __numTemp2 = n;			\
+									for(int i=0; i<(n); i++){			\
+										cudaEventCreate(__start2 + i);	\
+										cudaEventCreate(__stop2 + i);}	\
+
+#define CUDA_EVENTN_START(i)	cudaEventRecord(__start2[i], 0);
+
+#define CUDA_EVENTN_STOP(t, i)	cudaEventRecord(__stop2[i], 0);								\
+								cudaEventSynchronize(__stop2[i]);							\
+								cudaEventElapsedTime(__timeTemp2+i, __start2[i], __stop2[i]);	\
+								t += __timeTemp2[i];
+
+#define CUDA_EVENTN_CLEANUP		for(int i=0; i<__numTemp2; i++){	\
+									cudaEventDestroy(__start2[i]);	\
+									cudaEventDestroy(__stop2[i]);}
+
+/*
+ *	PRE_ and POST_KERNEL macros which can be turned on and off from #define's
+ *	
+ *	PRE_KERNEL macro assumes the block and grid dimensions are in variables blockDim and gridDim
+ *	If using different variable names, use the PRE_KERNEL2 macro
+ */
+#ifdef __PRE_KERNEL_ON
+
+#define PRE_KERNEL(str) printf("about to call %s with block size (%d x %d) and grid size (%d x %d)\n", str, blockDim.x, blockDim.y, gridDim.x, gridDim.y);
+
+#define PRE_KERNEL2(str, bd, gd) printf("about to call %s with block size (%d x %d) and grid size (%d x %d)\n", str, bd.x, bd.y, gd.x, gd.y);
+
+#else
+
+#define PRE_KERNEL(str)
+#define PRE_KERNEL2(str, bd, gd)
+
 #endif
+
+
+#ifdef __POST_KERNEL_ON
+
+#define POST_KERNEL(str)	CUT_CHECK_ERROR(#str" execution failed!!\n");	\
+							printf(#str" execution succeeded\n")
+
+#else
+
+#define POST_KERNEL(str)
+
+#endif
+
+
+
+#endif
+

@@ -6,7 +6,7 @@
 //  Copyright dbelll 2010. All rights reserved.
 //
 
-//#define DUMP_MOVES
+#define DUMP_MOVES
 //#define DUMP_ALL_AGENT_UPDATES
 //#define SHOW_SAMPLE_GAMES_AFTER_LEARNING 4
 
@@ -14,7 +14,7 @@
 
 #define LEARNING_LOG_FILE "standings.csv"
 #define AGENT_FILE_OUT "knight_out.agent"
-#define AGENT_FILE_CHAMP "knight57n6v01.agent"
+#define AGENT_FILE_CHAMP "knight57n4v11.agent"
 #define CHAMP_GAMES 1000
 
 #define REWARD_WIN 1.00f
@@ -100,6 +100,8 @@ typedef struct{
 	float *alpha;		// agent-specific alpha value (num_agents)
 	float *epsilon;		// agent-specific epsilon value (num_agents)
 	float *lambda;		// agent-specific lambda value (num_agents)
+	unsigned *states;		// saved state information (num_agents * state_size)
+	unsigned *next_to_play; // 0 ==> X, 1 ==> O
 } AGENT;
 
 //typedef struct {

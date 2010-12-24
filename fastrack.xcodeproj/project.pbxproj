@@ -28,10 +28,11 @@
 		103C91FC12BB0A2400FE2066 /* play */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = play; sourceTree = BUILT_PRODUCTS_DIR; };
 		103C920212BB0A4400FE2066 /* play.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = play.h; sourceTree = "<group>"; };
 		103C920312BB0A4400FE2066 /* play.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = play.c; sourceTree = "<group>"; };
+		103CE4E312C38538003DBEC7 /* cuda_utils.cu */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cuda; path = cuda_utils.cu; sourceTree = "<group>"; };
+		103CE4E412C38538003DBEC7 /* cuda_utils.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = cuda_utils.h; sourceTree = "<group>"; };
+		1064382012C3C9F000F6B78A /* CPUmoves */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = CPUmoves; sourceTree = "<group>"; };
 		106FF7F5119EE68B000CD6C8 /* Makefile */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.make; path = Makefile; sourceTree = "<group>"; };
 		106FF80D119EE7F5000CD6C8 /* main.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = main.c; sourceTree = "<group>"; };
-		106FF828119EEF51000CD6C8 /* cuda_utils.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = cuda_utils.h; sourceTree = "<group>"; };
-		106FF829119EEF51000CD6C8 /* cuda_utils.cu */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cuda; path = cuda_utils.cu; sourceTree = "<group>"; };
 		10D4729412BCD1070018A3A5 /* misc_utils.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = misc_utils.c; sourceTree = "<group>"; };
 		10D4729512BCD1070018A3A5 /* misc_utils.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = misc_utils.h; sourceTree = "<group>"; };
 		10D472C612BCDAFB0018A3A5 /* junk.csv */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = junk.csv; sourceTree = "<group>"; };
@@ -77,13 +78,13 @@
 		103C8AEA12B687C200FE2066 /* utilities */ = {
 			isa = PBXGroup;
 			children = (
+				103CE4E412C38538003DBEC7 /* cuda_utils.h */,
+				103CE4E312C38538003DBEC7 /* cuda_utils.cu */,
 				10D472DD12BCDD110018A3A5 /* cuda_rand.cu */,
-				10D4729412BCD1070018A3A5 /* misc_utils.c */,
 				10D4729512BCD1070018A3A5 /* misc_utils.h */,
+				10D4729412BCD1070018A3A5 /* misc_utils.c */,
 				103C8B5D12B6ADE500FE2066 /* rand_utils.h */,
 				103C8B5C12B6ADE500FE2066 /* rand_utils.c */,
-				106FF828119EEF51000CD6C8 /* cuda_utils.h */,
-				106FF829119EEF51000CD6C8 /* cuda_utils.cu */,
 				103C8AE712B686D100FE2066 /* helpers.h */,
 				103C8AE812B686D100FE2066 /* helpers.c */,
 			);
@@ -101,6 +102,7 @@
 				103C904712BA32FB00FE2066 /* wins.csv */,
 				103C91A212BA8A3200FE2066 /* compete.csv */,
 				10D472C612BCDAFB0018A3A5 /* junk.csv */,
+				1064382012C3C9F000F6B78A /* CPUmoves */,
 			);
 			name = "notes and results";
 			sourceTree = "<group>";

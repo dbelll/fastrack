@@ -61,7 +61,7 @@ EXECUTABLE	:= fastrack
 CUFILES		:= fastrack.cu cuda_utils.cu cuda_rand.cu
 
 # CUDA dependency files
-CU_DEPS	:= main.h helpers.h rand_utils.h fastrack.h
+CU_DEPS	:= main.h helpers.h rand_utils.h fastrack.h Makefile
 
 # C/C++ source files (compiled with gcc / c++)
 CCFILES		:=  main.c helpers.c rand_utils.c misc_utils.c
@@ -70,7 +70,7 @@ CCFILES		:=  main.c helpers.c rand_utils.c misc_utils.c
 #INCLUDES = -I/home/dbelll/cuda_libraries/
 
 # compiler flags
-#CUDACCFLAGS = --profile --ptxas-options=-v --use_fast_math --maxrregcount=16
+CUDACCFLAGS = --profile --ptxas-options=-v --use_fast_math #--maxrregcount=16
 
 ################################################################################
 # Rules and targets

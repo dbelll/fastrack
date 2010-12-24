@@ -45,8 +45,24 @@ __constant__ unsigned dc_num_wgts;
 __constant__ float dc_piece_ratioX;	// ratio of num_pieces to board_size
 __constant__ float dc_piece_ratioO;	// ratio of num_pieces to (board_size - num_pieces)
 
+__constant__ unsigned dc_reps_for_wgts;	// number of times must loop to have threads cover all the weights
+										// = 1 + (num_wgts-1)/board_size
+// prototypes
+void freeAgentCPU(AGENT *ag);
+void set_start_state(unsigned *state, unsigned pieces, unsigned *seeds, unsigned stride);
+
 #pragma mark -
 #pragma mark Helpers
+// calculates agent pointers based on offset from ag->wgts
+// agent data is organized as follows
+void set_agent_float_pointers(AGENT *ag)
+{
+	ag->e = ag->wgts + g_p.num_wgts * g_p.num_agents;
+	ag->saved_wgts = ag->e + g_p.num_wgts * g_p.num_agents;
+	ag->alpha = ag->saved_wgts + g_p.num_wgts * g_p.num_agents;
+	ag->epsilon = ag->alpha + g_p.num_agents;
+	ag->lambda = ag->epsilon + g_p.num_agents;
+}
 
 //	Initialize the global seeds using specified seed value.
 void set_global_seeds(unsigned seed)
@@ -517,8 +533,8 @@ void dump_state_ints(unsigned *state)
 
 void dump_state(unsigned *state, unsigned turn, unsigned nextToPlay)
 {
-//	printf("dump_state for %u %u %u %u\n", state[3], state[2], state[1], state[0]);
-	printf("turn %3d, %s to play:\n", turn, (nextToPlay ? "O" : "X"));
+//	printf("state located at %p\n", state);
+	printf("\nturn %3d, %s to play:\n", turn, (nextToPlay ? "O" : "X"));
 	dump_col_header(3, g_p.board_width);
 	for (int row = g_p.board_height - 1; row >= 0; row--) {
 		printf("%2u ", row+1);
@@ -572,6 +588,24 @@ void dump_boardsGPU(unsigned *board, unsigned n)
 	free(boardsCPU);
 }
 
+void dump_agentsGPU(const char *str, AGENT *agGPU, unsigned dumpW)
+{
+	printf("dump_agentsGPU\n");
+	
+	// create a CPU copy of the GPU agent data
+	AGENT *agCPU = (AGENT *)malloc(sizeof(AGENT));
+	
+	agCPU->seeds = host_copyui(agGPU->seeds, 4 * g_p.num_agents * g_p.board_size);
+	agCPU->states = host_copyui(agGPU->states, g_p.num_agents * g_p.state_size);
+	agCPU->next_to_play = host_copyui(agGPU->next_to_play, g_p.num_agents);
+	agCPU->wgts = host_copyf(agGPU->wgts, g_p.num_agent_floats * g_p.num_agents);
+	set_agent_float_pointers(agCPU);
+	
+	dump_agentsCPU(str, agCPU, dumpW);
+	
+	freeAgentCPU(agCPU);
+}
+
 void dump_statesGPU(unsigned *state, unsigned n)
 {
 	printf("dumping %d states at %p\n", n, state);
@@ -615,7 +649,7 @@ void dump_all_wgts(float *wgts, unsigned num_hidden)
 
 void dump_agent(AGENT *agCPU, unsigned iag, unsigned dumpW)
 {
-	printf("[SEEDS], %10d, %10d %10d %10d\n", agCPU->seeds[iag], agCPU->seeds[iag + g_p.num_agents], agCPU->seeds[iag + 2 * g_p.num_agents], agCPU->seeds[iag + 3 * g_p.num_agents]);
+	printf("[SEEDS], %10u, %10u %10u %10u\n", agCPU->seeds[iag], agCPU->seeds[iag + g_p.num_agents], agCPU->seeds[iag + 2 * g_p.num_agents], agCPU->seeds[iag + 3 * g_p.num_agents]);
 
 	dump_wgts_header("[ WEIGHTS]");
 	// get the weight pointer for this agent
@@ -641,7 +675,9 @@ void dump_agent(AGENT *agCPU, unsigned iag, unsigned dumpW)
 
 	printf("[   alpha], %9.4f\n", agCPU->alpha[iag]);
 	printf("[ epsilon], %9.4f\n", agCPU->epsilon[iag]);
-	printf("[  lambda], %9.4f\n\n", agCPU->lambda[iag]);
+	printf("[  lambda], %9.4f\n", agCPU->lambda[iag]);
+	
+	dump_state(agCPU->states + iag*g_p.state_size, 0, agCPU->next_to_play[iag]);
 }
 
 // dump all agents, flag controls if the eligibility trace values are also dumped
@@ -651,13 +687,12 @@ void dump_agentsCPU(const char *str, AGENT *agCPU, unsigned dumpW)
 	printf("%s\n", str);
 	printf("----------------------------------------------------------------------\n");
 	for (int i = 0; i < g_p.num_agents; i++) {
-		printf("[AGENT%5d]\n", i);
+		printf("\n[AGENT%5d] - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - \n", i);
 		dump_agent(agCPU, i, dumpW);
 	}
 	printf("======================================================================\n");
 	
 }
-
 
 
 #pragma mark -
@@ -704,17 +739,6 @@ void freeResults(RESULTS *r)
 
 
 #pragma mark Initialization
-// calculates agent pointers based on offset from ag->wgts
-// agent data is organized as follows
-void set_agent_float_pointers(AGENT *ag)
-{
-	ag->e = ag->wgts + g_p.num_wgts * g_p.num_agents;
-	ag->saved_wgts = ag->e + g_p.num_wgts * g_p.num_agents;
-	ag->alpha = ag->saved_wgts + g_p.num_wgts * g_p.num_agents;
-	ag->epsilon = ag->alpha + g_p.num_agents;
-	ag->lambda = ag->epsilon + g_p.num_agents;
-}
-
 // build the start state with pieces filling first row on each side
 void build_start_state()
 {
@@ -727,7 +751,7 @@ void build_start_state()
 
 /*
 	Build the move array, g_moves, using the allowable moves in g_allowable_moves[8][2]
-	g_moves will be of size board_size * 8 * board_size
+	g_moves will be of size board_size * 8
 */
 void build_move_array()
 {
@@ -735,7 +759,7 @@ void build_move_array()
 	for (int row = 0; row < g_p.board_height; row++) {
 		for (int col = 0; col < g_p.board_width; col++) {
 			for (int m = 0; m < 8; m++) {
-				unsigned iMoves = index4rc(row, col) * MAX_MOVES + m;				
+				unsigned iMoves = m * g_p.board_size + index4rc(row, col);
 				int toCol = col + g_allowable_moves[m][0];
 				int toRow = row + g_allowable_moves[m][1];
 				
@@ -770,11 +794,9 @@ void freeAgentGPU(AGENT *ag)
 {
 	if (ag) {
 		if (ag->seeds) CUDA_SAFE_CALL(cudaFree(ag->seeds));
+		if (ag->states) CUDA_SAFE_CALL(cudaFree(ag->states));
+		if (ag->next_to_play) CUDA_SAFE_CALL(cudaFree(ag->next_to_play));
 		if (ag->wgts) CUDA_SAFE_CALL(cudaFree(ag->wgts));
-		if (ag->e) CUDA_SAFE_CALL(cudaFree(ag->e));
-		if (ag->alpha) CUDA_SAFE_CALL(cudaFree(ag->alpha));
-		if (ag->epsilon) CUDA_SAFE_CALL(cudaFree(ag->epsilon));
-		if (ag->lambda) CUDA_SAFE_CALL(cudaFree(ag->lambda));
 		CUDA_SAFE_CALL(cudaFree(ag));
 	}
 }
@@ -783,11 +805,9 @@ void freeAgentCPU(AGENT *ag)
 {
 	if (ag) {
 		if (ag->seeds) free(ag->seeds);
+		if (ag->states) free(ag->states);
+		if (ag->next_to_play) free(ag->next_to_play);
 		if (ag->wgts) free(ag->wgts);
-		if (ag->e) free(ag->e);
-		if (ag->alpha) free(ag->alpha);
-		if (ag->epsilon) free(ag->epsilon);
-		if (ag->lambda) free(ag->lambda);
 		free(ag);
 	}
 }
@@ -825,6 +845,18 @@ AGENT *init_agentsCPU(PARAMS p)
 		set_agent_params(ag, i, p.alpha, p.epsilon, p.lambda); 
 	}
 	
+	ag->states = (unsigned *)malloc(p.num_agents * p.state_size * sizeof(unsigned));
+	for (int i = 0; i < p.num_agents * p.state_size; i++) {
+		ag->states[i] = 0;
+	}
+	for (int iAg = 0; iAg < p.num_agents; iAg++) {
+		set_start_state(ag->states + iAg * p.state_size, p.num_pieces, ag->seeds + iAg * p.board_size * 4, p.board_size);
+	}
+	ag->next_to_play = (unsigned *)malloc(p.num_agents * sizeof(unsigned));
+	for (int iAg = 0; iAg < p.num_agents; iAg++) {
+		ag->next_to_play[iAg] = ranf() < 0.5f ? 0 : 1;
+	}
+	
 	return ag;
 }
 
@@ -833,10 +865,19 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 {
 	AGENT *agGPU = (AGENT *)malloc(sizeof(AGENT));
 	agGPU->seeds = device_copyui(agCPU->seeds, 4 * g_p.num_agents * g_p.board_size);
+	agGPU->states = device_copyui(agCPU->states, g_p.num_agents * g_p.state_size);
+	agGPU->next_to_play = device_copyui(agCPU->next_to_play, g_p.num_agents);
 	agGPU->wgts = device_copyf(agCPU->wgts, g_p.num_agent_floats * g_p.num_agents);
 	set_agent_float_pointers(agGPU);
 	
-	cudaMemcpyToSymbol("dc_ag", &agGPU, sizeof(AGENT));
+	printf("agGPU->seeds %p\n", agGPU->seeds);
+	printf("agGPU->states %p\n", agGPU->states);
+	printf("agGPU->wgts %p\n", agGPU->wgts);
+	
+	int *d_g_moves = device_copyi(g_moves, g_p.board_size * MAX_MOVES);
+	cudaMemcpyToSymbol("dc_moves", d_g_moves, g_p.board_size * MAX_MOVES * sizeof(int));
+	
+	cudaMemcpyToSymbol("dc_ag", agGPU, sizeof(AGENT));
 	cudaMemcpyToSymbol("dc_gamma", &g_p.gamma, sizeof(float));
 	cudaMemcpyToSymbol("dc_num_hidden", &g_p.num_hidden, sizeof(unsigned));
 	cudaMemcpyToSymbol("dc_num_pieces", &g_p.num_pieces, sizeof(unsigned));
@@ -851,10 +892,23 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 	half_board_size >>=1;	// now half_board_size is the largest power of two less board_size
 	cudaMemcpyToSymbol("dc_half_board_size", &half_board_size, sizeof(unsigned));
 	
+	unsigned reps_for_wgts = 1 + (g_p.num_wgts - 1) / g_p.board_size;
+	printf("reps_for_wgts on GPU is %d\n", reps_for_wgts);
+	cudaMemcpyToSymbol("dc_reps_for_wgts", &reps_for_wgts, sizeof(unsigned));
+	
 	float piece_ratioX = (float)g_p.num_pieces / (float)g_p.board_size;
 	float piece_ratioO = (float)g_p.num_pieces / (float)(g_p.board_size - g_p.num_pieces);
 	cudaMemcpyToSymbol("dc_piece_ratioX", &piece_ratioX, sizeof(float));
 	cudaMemcpyToSymbol("dc_piece_ratioO", &piece_ratioO, sizeof(float));
+	printf("device constants:\n");
+	printf("   dc_num_hidden: %4d\n", g_p.num_hidden);
+	printf("   dc_num_pieces: %4d\n", g_p.num_pieces);
+	printf("   dc_state_size: %4d\n", g_p.state_size);
+	printf("   dc_board_size: %4d\n", g_p.board_size);
+	printf("   dc_num_wgts:   %4d\n", g_p.num_wgts);
+	printf("   dc_piece_ratioX: %9.6f\n", piece_ratioX);
+	printf("   dc_piece_ratioO: %9.6f\n", piece_ratioO);
+	
 	
 	return agGPU;
 }
@@ -880,7 +934,7 @@ float random_move(unsigned *state, unsigned *seeds, unsigned stride)
 			// found a piece that might be able to move, loop over all possible moves
 //			printf("found a piece that can move!\n");
 			for (int m = 0; m < MAX_MOVES; m++) {
-				int iTo = g_moves[iFrom * MAX_MOVES + m];
+				int iTo = g_moves[m * g_p.board_size + iFrom];
 				if (iTo >= 0 && !X_BOARD(state)[iTo]) {
 					// found a possible move, save it
 					if (move_count == allocated) {
@@ -934,7 +988,7 @@ float choose_move(unsigned *state, float *wgts, float *hidden, float *out)
 			// found a piece that might be able to move, loop over all possible moves
 //			printf("found a piece that can move!\n");
 			for (int m = 0; m < MAX_MOVES; m++) {
-				int iTo = g_moves[iFrom * MAX_MOVES + m];
+				int iTo = g_moves[m * g_p.board_size + iFrom];
 				if (iTo >= 0 && !X_BOARD(state)[iTo]) {
 					// found a possible move, modify the board and calculate the value
 					++move_count;
@@ -1061,9 +1115,9 @@ void update_wgts(float alpha, float delta, float *wgts, float *e)
 // update eligibility traces using the activation values for hidden and output nodes
 void update_trace(unsigned *state, float *wgts, float *e, float *hidden, float *out, float lambda)
 {
-#ifdef DUMP_MOVES
-	printf("update_trace\n");
-#endif
+//#ifdef DUMP_MOVES
+//	printf("update_trace\n");
+//#endif
 	// first decay all existing values
 	for (int i = 0; i < g_p.num_wgts; i++) {
 		e[i] *= g_p.gamma * lambda;
@@ -1185,7 +1239,7 @@ WON_LOSS compete(float *ag1_wgts, const char *name1, float *ag2_wgts, const char
 // Run a learning session using agent ag1 against ag2.  ag2 may be NULL which represents a random player
 // Start with a random board with start_pieces per side, or the normal starting board if start_pieces is 0
 // Stop the learning after num_turns (for each player)
-WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pieces, unsigned num_turns, unsigned max_turns, unsigned ag2_hidden, unsigned *seeds, unsigned stride)
+WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pieces, unsigned num_turns, unsigned max_turns, unsigned ag2_hidden)
 {
 //	printf("auto_learning: %d pieces,  %d turns, with %d max turns per game...\n", start_pieces, num_turns, max_turns);
 
@@ -1203,26 +1257,37 @@ WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pi
 	dump_agent(ag1, iAg, 1);
 #endif
 	
-	static unsigned *state = NULL;
 	static float *hidden = NULL;
 	static float *out = NULL;
-	if(!state) state = (unsigned *)malloc(g_p.state_size * sizeof(unsigned));
 	if(!hidden) hidden = (float *)malloc(g_p.num_hidden * sizeof(float));
 	if(!out) out = (float *)malloc(g_p.num_hidden * sizeof(float));
+
+	unsigned *state = ag1->states + iAg * g_p.state_size;
+	unsigned *seeds = ag1->seeds + iAg * g_p.board_size * 4;
 	
 	unsigned turn = 0;
 	unsigned total_turns = 0;
 	unsigned terminal = 0;
 	
 	// set up the starting state
-	set_start_state(state, start_pieces, seeds, stride);
-	if (RandUniform(seeds, stride) < 0.50f) {
+	// already set in initialization on CPU
+//	set_start_state(state, start_pieces, seeds, g_p.board_size);
+
+//	return wl;
+	
+#ifdef DUMP_MOVES
+	printf("\n\n--------------- agent %d, game %d ---------------------\n", iAg, wl.games);
+#endif
+
+//	if (RandUniform(seeds, g_p.board_size) < 0.50f) {
+	if (ag1->next_to_play[iAg]) {
+
 #ifdef DUMP_MOVES
 		printf("New game, O to play first...\n");
 		dump_state(state, turn, 1);		
 #endif
 		float r = (ag2_wgts	? take_action2(state, ag2_wgts, hidden, out, &terminal, ag2_hidden) 
-							: take_random_action(state, &terminal, seeds, stride));
+							: take_random_action(state, &terminal, seeds, g_p.board_size));
 		++turn;
 	}else {
 #ifdef DUMP_MOVES
@@ -1233,6 +1298,8 @@ WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pi
 #ifdef DUMP_MOVES
 	dump_state(state, turn, 0);		
 #endif
+
+//	return wl;
 
 	// choose the action, storing the next state in agCPU->state and returning the value for the next state
 	float V = choose_move(state, ag1_wgts, hidden, out);
@@ -1267,7 +1334,7 @@ WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pi
 		
 
 		float reward = (ag2_wgts	? take_action2(state, ag2_wgts, hidden, out, &terminal, ag2_hidden) 
-									: take_random_action(state, &terminal, seeds, stride));
+									: take_random_action(state, &terminal, seeds, g_p.board_size));
 		++turn;
 #ifdef DUMP_MOVES
 		dump_state(state, turn, 0);		
@@ -1296,17 +1363,17 @@ WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pi
 			++wl.games;
 //			if (++wl.games < num_turns) {
 #ifdef DUMP_MOVES
-				printf("\n\n--------------- game %d ---------------------\n", wl.games);
+				printf("\n\n--------------- agent %d, game %d ---------------------\n", iAg, wl.games);
 #endif
 				turn = 0;
-				set_start_state(state, start_pieces, seeds, stride);
-				if (RandUniform(seeds, stride) < 0.50f) {
+				set_start_state(state, start_pieces, seeds, g_p.board_size);
+				if (RandUniform(seeds, g_p.board_size) < 0.50f) {
 #ifdef DUMP_MOVES
 					printf("New game, O to play first...\n");
 					dump_state(state, turn, 1);		
 #endif
 					(ag2_wgts	? take_action(state, ag2_wgts, hidden, out, &terminal) 
-								: take_random_action(state, &terminal, seeds, stride));
+								: take_random_action(state, &terminal, seeds, g_p.num_agents));
 					++turn;
 				}else {
 #ifdef DUMP_MOVES
@@ -1356,43 +1423,34 @@ WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pi
 RESULTS *runCPU(AGENT *agCPU, float *champ_wgts)
 {
 	printf("running on CPU...\n");
+
+	dump_agentsCPU("initial agents on CPU", agCPU, 1);
+
+//	for (int iAg = 0; iAg < g_p.num_agents; iAg++) {
+//		auto_learn(agCPU, iAg, NULL, g_p.num_pieces, g_p.warmup_length, g_p.max_turns, 0);
+//	}
+	
+//	return NULL;
 	
 	// allocate the structure to hold the results
 	RESULTS *r = newResults(g_p);
 	
-//	FILE *champFile = fopen(AGENT_FILE_CHAMP, "r");
-//	unsigned champ_num_hidden = read_num_hidden(champFile);
-////	printf("champ from file %s has %d hidden nodes\n", AGENT_FILE_CHAMP, champ_num_hidden);
-//	float *champ_wgts = (float *)malloc(champ_num_hidden * (2*g_p.board_size + 3) * sizeof(float));
-//	read_wgts(champFile, champ_wgts);
-//	fclose(champFile);
-	
-	// each episode, the agent's weights are saved to be used as opponents
-//	float *saved_wgts = (float *)malloc(g_p.num_agents * g_p.num_wgts * sizeof(float));
-	
-	// standings holds the won/loss record during learning
-//	WON_LOSS *standings = (WON_LOSS *)malloc(g_p.num_agents * sizeof(WON_LOSS));
-	
-	// vsChamp hods won-loss record when each agent is run against the benchmark after learning
-//	WON_LOSS *vsChamp = (WON_LOSS *)malloc(g_p.num_agents * sizeof(WON_LOSS));
-	
 	// lastWinner is the agent in first place after each learning session
 	unsigned lastWinner = 0;
 
-
 //	printf("warm-up versus RAND\n");
-//	dump_agentsCPU("prior to warmup", agCPU, 0);
-	for (int iAg = 0; iAg < g_p.num_agents; iAg++) {
-		unsigned save_num_pieces = g_p.num_pieces;
-		printf("agent %d learning against RAND ... ", iAg);
-		for (int p = 1; p <= save_num_pieces; p++) {
-			g_p.num_pieces = p;
-			printf(" %d ... ", p);
-			auto_learn(agCPU, iAg, NULL, g_p.num_pieces, g_p.warmup_length, g_p.max_turns, 0, agCPU->seeds + iAg, g_p.num_agents);
-		}
-		printf(" done\n");
-		g_p.num_pieces = save_num_pieces;
-	}
+////	dump_agentsCPU("prior to warmup", agCPU, 0);
+//	for (int iAg = 0; iAg < g_p.num_agents; iAg++) {
+//		unsigned save_num_pieces = g_p.num_pieces;
+//		printf("agent %d learning against RAND ... ", iAg);
+//		for (int p = 1; p <= save_num_pieces; p++) {
+//			g_p.num_pieces = p;
+//			printf(" %d ... ", p);
+//			auto_learn(agCPU, iAg, NULL, g_p.num_pieces, g_p.warmup_length, g_p.max_turns, 0);
+//		}
+//		printf(" done\n");
+//		g_p.num_pieces = save_num_pieces;
+//	}
 
 	for (int iSession = 0; iSession < g_p.num_sessions; iSession++) {
 		// copy the current weights to the saved_wgts area
@@ -1407,25 +1465,30 @@ RESULTS *runCPU(AGENT *agCPU, float *champ_wgts)
 			r->standings[iStand].games = 0;
 			r->standings[iStand].wins = 0;
 			r->standings[iStand].losses = 0;
+
 //			for (int iOp = 0; iOp < g_p.num_agents; iOp++) {
 //				unsigned xOp = (iAg + iOp) % g_p.num_agents;
-			for (int iOp = 0; iOp < g_p.num_agents/((iSession > 0) ? 2 : 1); iOp++) {
-				unsigned xOp = (iAg + iOp) % g_p.num_agents;
-				if (iSession > 0) xOp = r->standings[(iSession-1) * g_p.num_agents + iOp].agent;
-//				printf("(%d vs %d) ", iAg, xOp);
-				WON_LOSS wl = auto_learn(agCPU, iAg, agCPU->saved_wgts + xOp * g_p.num_wgts, g_p.num_pieces, g_p.episode_length, g_p.max_turns, g_p.num_hidden, agCPU->seeds + iAg, g_p.num_agents);
-//				printf("g_p.num_hidden is %d\n", g_p.num_hidden);
-				r->standings[iStand].games += wl.games;
-				r->standings[iStand].wins += wl.wins;
-				r->standings[iStand].losses += wl.losses;
-			}
+
+//			// compete against the top half of the agents from previous standings
+//			for (int iOp = 0; iOp < g_p.num_agents/((iSession > 0) ? 2 : 1); iOp++) {
+//				unsigned xOp = (iAg + iOp) % g_p.num_agents;
+//				if (iSession > 0) xOp = r->standings[(iSession-1) * g_p.num_agents + iOp].agent;
+////				printf("(%d vs %d) ", iAg, xOp);
+//				WON_LOSS wl = auto_learn(agCPU, iAg, agCPU->saved_wgts + xOp * g_p.num_wgts, g_p.num_pieces, g_p.episode_length, g_p.max_turns, g_p.num_hidden);
+////				printf("g_p.num_hidden is %d\n", g_p.num_hidden);
+//				r->standings[iStand].games += wl.games;
+//				r->standings[iStand].wins += wl.wins;
+//				r->standings[iStand].losses += wl.losses;
+//			}
+
+			// just compete against the champ
+			WON_LOSS wl = auto_learn(agCPU, iAg, champ_wgts, g_p.num_pieces, g_p.episode_length, g_p.max_turns, g_p.num_hidden);
+			r->standings[iStand].games += wl.games;
+			r->standings[iStand].wins += wl.wins;
+			r->standings[iStand].losses += wl.losses;
 			
 			// compete against the champ as a benchmark
-			r->vsChamp[iStand] = compete(agCPU->wgts + iAg * g_p.num_wgts, NULL, champ_wgts, NULL, g_p.num_pieces, CHAMP_GAMES, g_p.max_turns, 0, g_p.num_hidden, agCPU->seeds + iAg, g_p.num_agents);
-			
-			// write results to file
-//			fprintf(f, "%d, %d, %d, %d, %d, %d, %d, %d\n", iSession, iAg, r->standings[iStand].games, r->standings[iStand].wins, r->standings[iStand].losses, r->vsChamp[iStand].games, r->vsChamp[iStand].wins, r->vsChamp[iStand].losses);
-			
+//			r->vsChamp[iStand] = compete(agCPU->wgts + iAg * g_p.num_wgts, NULL, champ_wgts, NULL, g_p.num_pieces, CHAMP_GAMES, g_p.max_turns, 0, g_p.num_hidden, agCPU->seeds + iAg, g_p.num_agents);
 		}
 		
 		// sort and print the standings
@@ -1435,29 +1498,16 @@ RESULTS *runCPU(AGENT *agCPU, float *champ_wgts)
 		lastWinner = r->standings[iSession * g_p.num_agents + 0].agent;
 	}
 	
-//	// write the best agent to the AGENT_FILE_OUT
-//	FILE *agfile = fopen(AGENT_FILE_OUT, "w");
-//	save_agent(agfile, agCPU, lastWinner);
-//	fclose(agfile);
-
 	// as a final test, see if the last winner can beat the champ over 1000 games
-	WON_LOSS wlChamp = compete(agCPU->wgts + lastWinner * g_p.num_wgts, "CHALLENGER", champ_wgts, "CHAMP", g_p.num_pieces, 1000, g_p.max_turns, 0, g_p.num_hidden, agCPU->seeds + lastWinner, g_p.num_agents);
-	printf("CHALLENGER v CHAMP  G: %d  W: %d  L: %d    %+4d   ", wlChamp.games, wlChamp.wins, wlChamp.losses, wlChamp.wins - wlChamp.losses);
+//	WON_LOSS wlChamp = compete(agCPU->wgts + lastWinner * g_p.num_wgts, "CHALLENGER", champ_wgts, "CHAMP", g_p.num_pieces, 1000, g_p.max_turns, 0, g_p.num_hidden, agCPU->seeds + lastWinner, g_p.num_agents);
+//	printf("CHALLENGER v CHAMP  G: %d  W: %d  L: %d    %+4d   ", wlChamp.games, wlChamp.wins, wlChamp.losses, wlChamp.wins - wlChamp.losses);
+//
+//	if (wlChamp.wins < wlChamp.losses) {
+//		printf("CHAMP wins\n");
+//	}else {
+//		printf("CHALLENGER beat CHAMP!!!\n");
+//	}
 
-	if (wlChamp.wins < wlChamp.losses) {
-		printf("CHAMP wins\n");
-	}else {
-		printf("CHALLENGER beat CHAMP!!!\n");
-	}
-
-	// show a few games of the best against itself
-#ifdef SHOW_SAMPLE_GAMES_AFTER_LEARNING
-	compete(agCPU->wgts + lastWinner * g_p.num_wgts, "BEST", agCPU->wgts + lastWinner * g_p.num_wgts, "BEST", g_p.num_pieces, SHOW_SAMPLE_GAMES_AFTER_LEARNING, g_p.max_turns, 1);
-#endif
-//	fclose(f);
-//	free(standings);
-//	free(champ_wgts);
-	
 	r->iBest = lastWinner;
 	return r;
 }
@@ -1484,6 +1534,21 @@ __device__ unsigned rand_num(unsigned nn, unsigned *seeds, unsigned stride)
 	return r;
 }
 
+// count the number of pieces on a board, storing the total in s_count[0]
+__device__ void count_board_pieces(unsigned idx, unsigned *s_board, unsigned *s_count)
+{
+	unsigned half = dc_half_board_size;
+	if (idx < half) s_count[idx] = s_board[idx];
+	if (idx + half < dc_board_size) s_count[idx] += s_board[idx + half];
+	__syncthreads();
+	while (0 < (half >>= 1)) {
+		if (idx < half) {
+			s_count[idx] += s_count[idx + half];
+		}
+		__syncthreads();
+	}
+}
+ 
 // Fill in the board with random pieces (uses dc_board_size and dc_num_pieces)
 //		s_board points to the board for this agent
 //		s_temp is a temporary area of size board_size/2
@@ -1500,16 +1565,17 @@ __device__ void random_board(unsigned *s_board, unsigned *s_temp, unsigned idx, 
 	__syncthreads();
 	
 	// count the number of 1's
-	unsigned half = dc_half_board_size;
-	if (idx < half) s_temp[idx] = s_board[idx];
-	if (idx + half < dc_board_size) s_temp[idx] += s_board[idx + half];
-	__syncthreads();
-	while (0 < (half >>= 1)) {
-		if (idx < half) {
-			s_temp[idx] += s_temp[idx + half];
-		}
-		__syncthreads();
-	}
+//	unsigned half = dc_half_board_size;
+//	if (idx < half) s_temp[idx] = s_board[idx];
+//	if (idx + half < dc_board_size) s_temp[idx] += s_board[idx + half];
+//	__syncthreads();
+//	while (0 < (half >>= 1)) {
+//		if (idx < half) {
+//			s_temp[idx] += s_temp[idx + half];
+//		}
+//		__syncthreads();
+//	}
+	count_board_pieces(idx, s_board, s_temp);
 	// s_temp[0] now contains the number of 1's
 	
 	if (idx == 0) {
@@ -1535,14 +1601,15 @@ __device__ void random_board_masked(unsigned *s_board, unsigned *s_mask, unsigne
 	__syncthreads();
 	
 	// count the number of ones
-	unsigned half = dc_half_board_size;
-	if (idx < half) s_temp[idx] = s_board[idx];
-	if (idx + half < dc_board_size) s_temp[idx] += s_board[idx + half];
-	__syncthreads();
-	while (0 < (half >>= 1)) {
-		if (idx < half) s_temp[idx] += s_temp[idx + half];
-		__syncthreads();
-	}
+//	unsigned half = dc_half_board_size;
+//	if (idx < half) s_temp[idx] = s_board[idx];
+//	if (idx + half < dc_board_size) s_temp[idx] += s_board[idx + half];
+//	__syncthreads();
+//	while (0 < (half >>= 1)) {
+//		if (idx < half) s_temp[idx] += s_temp[idx + half];
+//		__syncthreads();
+//	}
+	count_board_pieces(idx, s_board, s_temp);
 	// s_temp[0] now contains the number of 1's
 	
 	if (idx == 0) {
@@ -1559,62 +1626,205 @@ __device__ void random_board_masked(unsigned *s_board, unsigned *s_mask, unsigne
 	__syncthreads();
 }
 
-__device__ void random_state(unsigned *s_state, unsigned *s_temp, unsigned idx, unsigned *seeds, unsigned stride)
+__device__ void random_state(unsigned *s_state, unsigned *s_temp, unsigned idx, unsigned *s_seeds, unsigned stride)
 {
-	random_board(s_state, s_temp, idx, seeds + idx, dc_board_size);
-	random_board_masked(s_state + dc_board_size, s_state, s_temp, idx, seeds + idx, dc_board_size);
+	random_board(s_state, s_temp, idx, s_seeds, dc_board_size);
+	random_board_masked(s_state + dc_board_size, s_state, s_temp, idx, s_seeds, dc_board_size);
 }
 
 
 // one thread block per state with at least board_size threads
-__global__ void randstate_kernel(unsigned *state, unsigned *seeds)
-{
-	unsigned idx = threadIdx.x;
-	unsigned iAgent = blockIdx.x * dc_state_size;
-	
-	__shared__ unsigned s_state[MAX_STATE_SIZE];
-	__shared__ unsigned s_temp[MAX_BOARD_SIZE];
-	
-	random_state(s_state, s_temp, idx, seeds + iAgent * 2, dc_board_size);
-	if (idx < dc_state_size) 
-		state[iAgent + idx] = s_state[idx];
-	if (blockDim.x < dc_state_size && (idx + blockDim.x) < dc_state_size)
-		state[iAgent + idx + blockDim.x] = s_state[idx + blockDim.x];
-}
+//__global__ void randstate_kernel(unsigned *state, unsigned *seeds)
+//{
+//	unsigned idx = threadIdx.x;
+//	unsigned iAgent = blockIdx.x * dc_state_size;
+//	
+//	__shared__ unsigned s_state[MAX_STATE_SIZE];
+//	__shared__ unsigned s_temp[MAX_BOARD_SIZE];
+//	
+//	random_state(s_state, s_temp, idx, seeds + iAgent * 2, dc_board_size);
+//	if (idx < dc_state_size) 
+//		state[iAgent + idx] = s_state[idx];
+//	if (blockDim.x < dc_state_size && (idx + blockDim.x) < dc_state_size)
+//		state[iAgent + idx + blockDim.x] = s_state[idx + blockDim.x];
+//}
 
 // thread x dimension is 0 to board_size-1
 // block x dimension is the board number
-__global__ void randboard_kernel(unsigned *board, unsigned *seeds)
+//__global__ void randboard_kernel(unsigned *board, unsigned *seeds)
+//{
+//	unsigned idx = threadIdx.x;
+//	unsigned iAgent = blockIdx.x * dc_board_size;		// agent number times board_size
+//	
+//	__shared__ unsigned s_board[MAX_BOARD_SIZE];
+//	__shared__ unsigned s_temp[MAX_BOARD_SIZE];
+//	random_board(s_board, s_temp, idx, seeds + iAgent * 4, dc_board_size);
+//
+//	// copy the result to global memory
+//	if(idx < dc_board_size) board[iAgent + idx] = s_board[idx];
+//}
+
+__device__ void reward(unsigned idx, unsigned *s_state, unsigned *s_temp, unsigned *ps_terminal, float *ps_reward)
+{
+	if (idx == 0) *ps_terminal = 0;
+	__syncthreads();
+	
+	count_board_pieces(idx, s_state, s_temp);
+	if (idx == 0 && 0 == s_temp[0]) {
+		*ps_terminal = 1;
+		*ps_reward = REWARD_WIN;
+	}
+	__syncthreads();
+	count_board_pieces(idx, s_state + dc_board_size, s_temp);
+	if (idx == 0 && 0 == s_temp[0]) {
+		*ps_terminal = 1;
+		*ps_reward = REWARD_LOSS;
+	}
+	if (idx == 0) *ps_reward = 92.0f;
+	__syncthreads();
+}
+
+__device__ void switch_sides(unsigned idx, unsigned *s_state)
+{
+	unsigned temp = s_state[idx];
+	s_state[idx] = s_state[idx + dc_board_size];
+	s_state[idx + dc_board_size] = temp;
+}
+
+__device__ void choose_move(unsigned idx, unsigned *s_state, float *s_wgts, float s_hidden, float *s_out)
+{
+	
+}
+
+__device__ void take_action(unsigned idx, unsigned *s_state, unsigned *s_temp, float *s_owgts, float *s_hidden, float *s_out, unsigned *ps_terminal, float *s_ophidden, float *ps_reward)
+{
+	reward(idx, s_state, s_temp, ps_terminal, ps_reward);
+	if (!*ps_terminal) {
+		switch_sides(idx, s_state);
+//		choose_move(idx, s_state, s_owgts, s_hidden, s_out);
+		switch_sides(idx, s_state);
+		reward(idx, s_state, s_temp, ps_terminal, ps_reward);
+	}
+	__syncthreads();
+}
+
+// block number is the agent number,
+// threads per block is board_size
+__global__ void learn_kernel(unsigned *seeds, float *wgts, float *e, float *ag2_wgts)
 {
 	unsigned idx = threadIdx.x;
-	unsigned iAgent = blockIdx.x * dc_board_size;		// agent number times board_size
+	unsigned iAgent = blockIdx.x;
+//	unsigned iAgentBS = blockIdx.x * dc_board_size;
+//	unsigned iAgentWgts = blockIdx.x * dc_num_wgts;
 	
-	__shared__ unsigned s_board[MAX_BOARD_SIZE];
-	__shared__ unsigned s_temp[MAX_BOARD_SIZE];
-	random_board(s_board, s_temp, idx, seeds + iAgent * 4, dc_board_size);
+	// static shared memory
+	__shared__ float s_rand;
+	__shared__ float s_reward;
+	__shared__ float s_lambda;
+	__shared__ float s_alpha;
+	__shared__ unsigned s_terminal;
+	__shared__ unsigned s_ui;
 
-	// copy the result to global memory
-	if(idx < dc_board_size) board[iAgent + idx] = s_board[idx];
+	// dynamic shared memory
+	extern __shared__ unsigned s_seeds[];						// 4 * dc_board_size
+	unsigned *s_state = s_seeds + 4 * dc_board_size;			// dc_state_size
+	unsigned *s_temp = s_state + dc_state_size;					// dc_board_size
+	float *s_hidden = (float *)(s_temp + dc_board_size);		// dc_num_hidden
+	float *s_out = s_hidden + dc_num_hidden;					// dc_num_hidden
+	float *s_ophidden = s_out + dc_num_hidden;					// dc_num_hidden
+	float *s_wgts = s_ophidden + dc_num_hidden;					// dc_num_wgts
+	float *s_e = s_wgts + (3 + 2*dc_board_size)*dc_num_hidden;	// dc_num_wgts
+	float *s_opwgts = s_e + (3 + 2*dc_board_size)*dc_num_hidden;	// dc_num_wgts
+	
+	// copy values to shared memory
+	if (idx == 0){
+		s_lambda = dc_ag.lambda[blockIdx.x];
+		s_alpha = dc_ag.alpha[blockIdx.x];
+	}
+	__syncthreads();
+	
+	s_state[idx] = dc_ag.states[iAgent * dc_state_size + idx];
+	s_state[idx + dc_board_size] = dc_ag.states[iAgent * dc_state_size +idx + dc_board_size];
+	
+	s_seeds[idx] = seeds[iAgent * 4 * dc_board_size + idx];
+	s_seeds[idx + dc_board_size] = seeds[iAgent * 4 * dc_board_size + idx + dc_board_size];
+	s_seeds[idx + 2*dc_board_size] = seeds[iAgent * 4 * dc_board_size + idx + 2*dc_board_size];
+	s_seeds[idx + 3*dc_board_size] = seeds[iAgent * 4 * dc_board_size + idx + 3*dc_board_size];
+	
+	for (int i = 0; i < dc_reps_for_wgts; i++) {
+		if (idx + i*dc_board_size < dc_num_wgts) {
+			s_wgts[idx + i*dc_board_size] = wgts[iAgent * dc_num_wgts + i*dc_board_size];
+			s_e[idx + i*dc_board_size] = 0.0f; //e[iAgent * dc_num_wgts + i*dc_board_size];
+//			s_opwgts[idx] = ag2_wgts[iAgent * dc_num_wgts + i*dc_board_size];
+		}
+	}
+
+	unsigned turn = 0;
+	unsigned total_turns = 0;
+	
+	// skip this for testing so agent starts with the same initial state as CPU
+//	random_state(s_state, s_temp, idx, s_seeds, dc_board_size);
+
+//	if (idx == 0) s_rand = RandUniform(s_seeds, dc_board_size);
+//	__syncthreads();
+
+	s_reward = 0.0f;
+	if (dc_ag.next_to_play[iAgent]) {
+		take_action(idx, s_state, s_temp, s_opwgts, s_hidden, s_out, &s_terminal, s_ophidden, &s_reward);
+		++turn;
+	}
+	__syncthreads();
+	dc_ag.alpha[iAgent] = s_reward;
+	
+//	float V = choose_move(s_state, s_wgts, s_hidden, s_out);
+//	update_trace(s_state, s_wgts, s_e, s_hidden, s_out, s_lambda);
+	
+	// copy values back to global memory
+	dc_ag.states[iAgent * dc_state_size + idx] = s_state[idx];
+	dc_ag.states[iAgent * dc_state_size + idx + dc_board_size] = s_state[idx + dc_board_size];
+	
+	dc_ag.seeds[iAgent * dc_board_size * 4 + idx] = s_seeds[idx];
+	dc_ag.seeds[iAgent * dc_board_size * 4 + idx + dc_board_size] = s_seeds[idx + dc_board_size];
+	dc_ag.seeds[iAgent * dc_board_size * 4 + idx + 2*dc_board_size] = s_seeds[idx + 2*dc_board_size];
+	dc_ag.seeds[iAgent * dc_board_size * 4 + idx + 3*dc_board_size] = s_seeds[idx + 3*dc_board_size];
+
+	for (int i = 0; i < dc_reps_for_wgts; i++) {
+		if (idx + i*dc_board_size < dc_num_wgts) {
+			wgts[iAgent * dc_num_wgts + i*dc_board_size] = s_wgts[idx + i*dc_board_size];
+		}
+	}
+
+}
+
+// calculate the 
+unsigned dynamic_shared_mem()
+{
+	unsigned count = 4 * g_p.board_size;	// s_seeds
+	count += g_p.state_size;				// s_state
+	count += g_p.board_size;				// s_temp
+	count += g_p.num_hidden;				// s_hidden
+	count += g_p.num_hidden;				// s_out
+	count += g_p.num_hidden;				// s_ophidden
+	count += g_p.num_wgts;					// s_wgts
+	count += g_p.num_wgts;					// s_e
+	count += g_p.num_wgts;					// s_opwgts
+	printf("%d elements in shared memory, total of %d bytes\n", count, count * 4);
+	return sizeof(unsigned) * count;
 }
 
 RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 {
 	printf("running on GPU...\n");
-	// generate a random board
-	unsigned *d_state = device_allocui(g_p.state_size * g_p.num_agents);
+	dump_agentsGPU("initial agents on GPU", agGPU, 1);
 	
-	unsigned thx = 1;
-	while (thx < g_p.state_size){
-		 thx <<= 1;
-	}
-	printf("thx = %d\n", thx);
 	dim3 blockDim(g_p.board_size);
 	dim3 gridDim(g_p.num_agents);
-	printf("bockDim is (%dx%d) and gridDim is (%dx%d)\n", blockDim.x, blockDim.y, gridDim.x, gridDim.y);
-	randstate_kernel<<<gridDim, blockDim>>>(d_state, agGPU->seeds);
+
+	PRE_KERNEL("learn_kernel");
+	learn_kernel<<<gridDim, blockDim, dynamic_shared_mem()>>>(agGPU->seeds, agGPU->wgts, agGPU->e, NULL);
+	POST_KERNEL(learn_kernel);
 	
-	device_dumpui("raw state on device", d_state, 2 * g_p.board_height * g_p.num_agents, g_p.board_width);
-	dump_statesGPU(d_state, g_p.num_agents);
+	dump_agentsGPU("agents after learning on GPU", agGPU, 1);
 	
 	return NULL;
 }

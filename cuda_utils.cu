@@ -45,11 +45,11 @@ float *device_copyf(float *data, unsigned count_data)
 	float *d_data = NULL;
 	unsigned size_data = count_data * sizeof(float);
 	#ifdef TRACE_DEVICE_ALLOCATIONS
-		printf("[device_copyf] float host data at 0x%p count = %d, ", data, count_data);
+		printf("[device_copyf] float host data at %p count = %d, ", data, count_data);
 	#endif
 	CUDA_SAFE_CALL(cudaMalloc((void **)&d_data, size_data));
 	#ifdef TRACE_DEVICE_ALLOCATIONS
-		printf("copied to 0x%p\n", d_data);
+		printf("copied to %p\n", d_data);
 	#endif
 	CUDA_SAFE_CALL(cudaMemcpy(d_data, data, size_data, cudaMemcpyHostToDevice));
 	return d_data;
@@ -60,7 +60,22 @@ unsigned *device_copyui(unsigned *data, unsigned count_data)
 	unsigned *d_data = NULL;
 	unsigned size_data = count_data * sizeof(unsigned);
 	#ifdef TRACE_DEVICE_ALLOCATIONS
-		printf("[device_copyui] unsigned data at 0x%p count = %d, ", data, count_data);
+		printf("[device_copyui] unsigned data at %p count = %d, ", data, count_data);
+	#endif
+	CUDA_SAFE_CALL(cudaMalloc((void **)&d_data, size_data));
+#ifdef TRACE_DEVICE_ALLOCATIONS
+	printf("copied to 0x%p]\n", d_data);
+#endif
+	CUDA_SAFE_CALL(cudaMemcpy(d_data, data, size_data, cudaMemcpyHostToDevice));
+	return d_data;
+}
+
+int *device_copyi(int *data, unsigned count_data)
+{
+	int *d_data = NULL;
+	unsigned size_data = count_data * sizeof(int);
+	#ifdef TRACE_DEVICE_ALLOCATIONS
+		printf("[device_copyi] integers data at %p count = %d, ", data, count_data);
 	#endif
 	CUDA_SAFE_CALL(cudaMalloc((void **)&d_data, size_data));
 #ifdef TRACE_DEVICE_ALLOCATIONS
@@ -74,21 +89,63 @@ float *device_allocf(unsigned count_data)
 {
 	float *d_data;
 	#ifdef TRACE_DEVICE_ALLOCATIONS
-		printf("[device_allocf] count = %d\n", count_data);
+		printf("[device_allocf] count = %d", count_data);
 	#endif
 	CUDA_SAFE_CALL(cudaMalloc((void **)&d_data, count_data * sizeof(float)));
+	#ifdef TRACE_DEVICE_ALLOCATIONS
+		printf(" at %p\n", d_data);
+	#endif
 	return d_data;
+}
+
+__global__ void fillui_kernel(unsigned *d_data, unsigned count, unsigned val)
+{
+	unsigned iGlobal = threadIdx.x + blockIdx.x * blockDim.x;
+	if (iGlobal < count) d_data[iGlobal] = val;
 }
 
 unsigned *device_allocui(unsigned count_data)
 {
 	unsigned *d_data;
 	#ifdef TRACE_DEVICE_ALLOCATIONS
-		printf("[device_allocui] count = %d\n", count_data);
+		printf("[device_allocui] count = %d", count_data);
 	#endif
 	CUDA_SAFE_CALL(cudaMalloc((void **)&d_data, count_data * sizeof(unsigned)));
+	#ifdef TRACE_DEVICE_ALLOCATIONS
+		printf(" at %p\n", d_data);
+	#endif
 	return d_data;
 }
+
+unsigned *device_alloc_filledui(unsigned count_data, unsigned val)
+{
+	unsigned *d_data;
+	#ifdef TRACE_DEVICE_ALLOCATIONS
+		printf("[device_allocui] count = %d", count_data);
+	#endif
+	CUDA_SAFE_CALL(cudaMalloc((void **)&d_data, count_data * sizeof(unsigned)));
+	dim3 blockDim(512);
+	dim3 gridDim(1 + (count_data-1)/512);
+	fillui_kernel<<<gridDim, blockDim>>>(d_data, count_data, val);
+	#ifdef TRACE_DEVICE_ALLOCATIONS
+		printf(" at %p\n", d_data);
+	#endif
+	return d_data;
+}
+
+__global__ void device_fillf_kernel(float val, float *d_data, unsigned count)
+{
+	unsigned iGlobal = threadIdx.x + blockIdx.x * blockDim.x;
+	if (iGlobal > count) return;
+	d_data[iGlobal] = val;
+}
+void device_fillf(float val, float *d_data, unsigned count)
+{
+	dim3 blockDim(512);
+	dim3 gridDim(1 + (count-1)/512);
+	device_fillf_kernel<<<gridDim, blockDim>>>(val, d_data, count);
+}
+
 
 float *host_copyf(float *d_data, unsigned count_data)
 {
@@ -106,7 +163,7 @@ unsigned *host_copyui(unsigned *d_data, unsigned count_data)
 	unsigned size_data = count_data * sizeof(unsigned);
 	unsigned *data = (unsigned *)malloc(size_data);
 	#ifdef TRACE_DEVICE_ALLOCATIONS
-		printf("[host_copyui] unsigned data at 0x%p count = %d\n", d_data, count_data);
+		printf("[host_copyui] unsigned data at %p count = %d\n", d_data, count_data);
 	#endif
 	CUDA_SAFE_CALL(cudaMemcpy(data, d_data, size_data, cudaMemcpyDeviceToHost));
 	return data;
@@ -123,7 +180,7 @@ void host_dumpf(const char *str, float *data, unsigned nRows, unsigned nCols)
 	for (int i = 0; i < nRows; i++) {
 		printf("[%4d]", i);
 		for (int j = 0; j < nCols; j++) {
-			printf("%10.6f", data[i * nCols + j]);
+			printf("%10.3f", data[i * nCols + j]);
 		}
 		printf("\n");
 	}

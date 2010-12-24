@@ -1,8 +1,16 @@
 Today's Goals
 
-	Implement GPU version of the code
+	Implement GPU version of the code:
 		
+	(1) Rearrange all wgts so the cell number is the fastest changing index (not hidden node number)
 
+	(2) Create a way to test the Value for State GPU function (and to be able to time it).
+	
+	(3) Finish the choose_move function
+	
+	
+	
+Round up the board size to have optimal alignment of weights in global memory.
 
 
 Add ability to have varying num_hidden by agent
