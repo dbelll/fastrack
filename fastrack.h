@@ -10,7 +10,9 @@
 //#define DUMP_ALL_AGENT_UPDATES
 //#define SHOW_SAMPLE_GAMES_AFTER_LEARNING 4
 
-#define MAX_BOARD_DIMENSION 8	// maximum value for width or length of board
+#define MAX_BOARD_DIMENSION 8	// maximum value for width or length of board, should be power of 2
+#define MAX_BOARD_SIZE MAX_BOARD_DIMENSION * MAX_BOARD_DIMENSION
+#define MAX_STATE_SIZE MAX_BOARD_SIZE * 2
 
 #define LEARNING_LOG_FILE "standings.csv"
 #define AGENT_FILE_OUT "knight_out.agent"
@@ -30,9 +32,6 @@
 #define MOVES_JUMP_DIAG {{0, 1}, {2, 2}, {1, 0}, {2, -2}, {0, -1}, {-2, -2}, {-1, 0}, {-2, 2}}
 #define MOVES_JUMP_ORTHO {{0, 2}, {1, 1}, {2, 0}, {1, -1}, {0, -2}, {-1, -1}, {-2, 0}, {-1, 1}}
 
-#define MAX_BOARD_SIZE MAX_BOARD_DIMENSION * MAX_BOARD_DIMENSION
-#define MAX_STATE_SIZE 2 * MAX_BOARD_SIZE
-
 #define MAX_MOVES 8			// the maximum number of possible moves in the piece move definitions
 
 // macro for executing statement if variable show is true
@@ -40,6 +39,7 @@
 // eg:		SHOW dump_state(state, turn, 1);
 #define SHOW if(show)
 
+// these macros are for accessing the boards within a compact state
 #define X_BOARD(state) (state)
 #define O_BOARD(state) ((state) + g_p.board_size)
 
@@ -81,6 +81,7 @@ typedef struct {
 	unsigned half_board_size;	// biggest power of two less than board_size
 	unsigned num_wgts;			// num_hidden * (2*board_size + 3) = space used for weight array
 								// this value is the stride between agent's weight blocks
+	unsigned wgts_stride;		// MAX_STATE_SIZE * (num_hidden + 2)
 	unsigned num_agent_floats;	// (3*alloc_wgts + 3) = total size of agent float data
 								// (wgts and e and  alpha, epsilon, and lambda)
 	unsigned timesteps;			// num_sessions * num_agents * episode_length

@@ -57,7 +57,8 @@ void dump_params(PARAMS p)
 	printf("   state_size       %7d\n", p.state_size);
 	printf("agent parameters:\n");
 	printf("   num_hidden       %7d\n", p.num_hidden);
-	printf("   num_wgts		    %7d\n", p.num_wgts);
+	printf("   num_wgts         %7d\n", p.num_wgts);
+	printf("   wgts_stride      %7d\n", p.wgts_stride);
 	printf("   num_agent_floats %7d\n", p.num_agent_floats);
 	printf("   init_wgt_min     %7.4f\n", p.init_wgt_min);
 	printf("   init_wgt_max     %7.4f\n", p.init_wgt_max);
@@ -121,7 +122,9 @@ PARAMS read_params(int argc, const char **argv)
 	}
 	
 	p.num_wgts = p.num_hidden * (2 * p.board_size + 3);	// number of weights for one agent
-	p.num_agent_floats = (3*p.num_wgts + 3);	// total number of float values for an agent
+//	p.wgts_stride = MAX_STATE_SIZE * (p.num_hidden + 2);	// room allocated for one agent's wgts
+	p.wgts_stride = p.num_wgts;
+	p.num_agent_floats = (3*p.wgts_stride + 3);	// total number of float values for an agent
 												// (wgts, e, saved_wgts, alpha, epsilon, lambda)
 	p.timesteps = p.num_sessions * p.num_agents * p.episode_length;
 	p.agent_timesteps = p.timesteps * p.num_agents;
