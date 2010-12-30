@@ -8,3 +8,6 @@
  */
 
 unsigned log2ui(unsigned x);
+
+// calculate the largest power of 2 less than x
+unsigned halfpow2(unsigned x);

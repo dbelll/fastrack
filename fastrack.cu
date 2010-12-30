@@ -42,6 +42,7 @@ __constant__ unsigned dc_num_pieces;
 __constant__ unsigned dc_state_size;
 __constant__ unsigned dc_board_size;
 __constant__ unsigned dc_half_board_size;
+__constant__ unsigned dc_half_hidden;
 __constant__ unsigned dc_num_wgts;
 __constant__ unsigned dc_wgts_stride;
 __constant__ float dc_piece_ratioX;	// ratio of num_pieces to board_size
@@ -51,6 +52,10 @@ __constant__ unsigned dc_reps_for_wgts;	// number of times must loop to have thr
 										// = 1 + (num_wgts-1)/board_size
 										
 __constant__ int *dc_moves;			// pointer to d_g_moves array on device
+
+__constant__ unsigned dc_max_turns;
+__constant__ unsigned dc_episode_length;
+__constant__ unsigned dc_benchmark_games;
 
 // prototypes
 void freeAgentCPU(AGENT *ag);
@@ -128,6 +133,22 @@ float *psIH(float *w, unsigned iI, unsigned iH){ return w + iH * g_p.state_size 
 float *psBH(float *w, unsigned iH){ return w + g_p.state_size * g_p.num_hidden + iH; }
 float *psHO(float *w, unsigned iH){ return w + g_p.state_size * (g_p.num_hidden + 1) + iH; }
 float *psBO(float *w){ return w + g_p.num_wgts - 1; }
+
+// macros for use on device
+// They evaluate to a pointer to the first value for the specified section of weights
+#define G_IXH(w, iH) (w + iH * MAX_STATE_SIZE)
+#define G_IOH(w, iH) (G_IXH(w, iH) + MAX_BOARD_SIZE)
+#define G_BH(w) (w + dc_num_hidden * MAX_STATE_SIZE)
+#define G_HO(w) (G_BH(w) + MAX_STATE_SIZE)
+#define G_BO(w) (G_HO(w) + MAX_STATE_SIZE - 1)
+
+#define S_IXH(w, iH) (w + iH * dc_state_size)
+#define S_IOH(w, iH) (S_IXH(w, iH) + dc_board_size)
+#define S_BH(w) (w + dc_num_hidden * dc_state_size)
+#define S_HO(w) (S_BH(w) + dc_num_hidden)
+#define S_BO(w) (S_HO(w) + dc_num_hidden)
+
+
 #endif
 
 float gBH(float *w, unsigned iH){ return *pgBH(w, iH);}
@@ -161,7 +182,7 @@ void set_global_seeds(unsigned seed)
 	printf("global seeds are: %u %u %u %u\n", g_seeds[0], g_seeds[1], g_seeds[2], g_seeds[3]);
 }
 
-float sigmoid(float x)
+__device__ __host__ float sigmoid(float x)
 {
 	return 1.0f/(1.0f + expf(-x));
 }
@@ -346,7 +367,7 @@ void copy_start_state(unsigned *state)
 	bcopy(g_start_state, state, g_p.state_size * sizeof(unsigned));
 }
 
-void switch_sides(unsigned *state)
+__host__ void switch_sides(unsigned *state)
 {
 	for (int i = 0; i < g_p.board_size; i++) {
 		unsigned temp = X_BOARD(state)[i];
@@ -1094,6 +1115,10 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 	printf("agGPU->wgts %p\n", agGPU->wgts);
 	
 	int *d_g_moves = device_copyi(g_moves, g_p.board_size * MAX_MOVES);
+	
+	host_dumpi("g_moves", g_moves, MAX_MOVES, g_p.board_size);
+	device_dumpi("d_moves", d_g_moves, MAX_MOVES, g_p.board_size);
+	
 	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_moves", &d_g_moves, sizeof(int *)));
 	
 	// copy parameter values to constant memory
@@ -1106,6 +1131,11 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_num_wgts", &g_p.num_wgts, sizeof(unsigned)));
 	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_wgts_stride", &g_p.wgts_stride, sizeof(unsigned)));
 	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_half_board_size", &g_p.half_board_size, sizeof(unsigned)));
+	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_half_hidden", &g_p.half_hidden, sizeof(unsigned)));
+
+	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_max_turns", &g_p.max_turns, sizeof(unsigned)));
+	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_episode_length", &g_p.episode_length, sizeof(unsigned)));
+	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_benchmark_games", &g_p.benchmark_games, sizeof(unsigned)));
 	
 //	unsigned half_board_size = 1;
 //	while (half_board_size < g_p.board_size) {
@@ -1809,15 +1839,41 @@ __device__ void count_board_pieces(unsigned idx, unsigned *s_board, unsigned *s_
 		__syncthreads();
 	}
 }
- 
+
+__device__ void reduce_board(float *s_board)
+{
+	unsigned idx = threadIdx.x;
+	unsigned half = dc_half_board_size;
+	if (idx + half < dc_board_size) s_board[idx] += s_board[idx + half];
+	__syncthreads();
+	while (0 < (half >>= 1)) {
+		if (idx < half) s_board[idx] += s_board[idx + half];
+		__syncthreads();
+	}
+}
+
+__device__ void reduce_hidden(float *s_hidden)
+{
+	unsigned idx = threadIdx.x;
+	unsigned half = dc_half_hidden;
+	if (idx + half < dc_num_hidden) s_hidden[idx] += s_hidden[idx + half];
+	__syncthreads();
+	while (0 < (half >>= 1)) {
+		if (idx < half) s_hidden[idx] += s_hidden[idx + half];
+		__syncthreads();
+	}
+}
+
 // Fill in the board with random pieces (uses dc_board_size and dc_num_pieces)
 //		s_board points to the board for this agent
 //		s_temp is a temporary area of size board_size/2
 //		idx is the thread number which represents the cell, must range from 0 to (dc_board_size - 1)
 //		seeds points to 1st seed for this agent
 //		stride is the stride of seeds
-__device__ void random_board(unsigned *s_board, unsigned *s_temp, unsigned idx, unsigned *seeds, unsigned stride)
+__device__ void random_board(unsigned *s_board, unsigned *s_temp, unsigned *seeds, unsigned stride)
 {
+	unsigned idx = threadIdx.x;
+	
 	// randomly add pieces to cells using probability dc_piece_ratio
 	if (idx < dc_board_size) {
 		if (dc_piece_ratioX > RandUniform(seeds + idx, stride)) s_board[idx] = 1;
@@ -1855,8 +1911,10 @@ __device__ void random_board(unsigned *s_board, unsigned *s_temp, unsigned idx, 
 }
 
 
-__device__ void random_board_masked(unsigned *s_board, unsigned *s_mask, unsigned *s_temp, unsigned idx, unsigned *seeds, unsigned stride)
+__device__ void random_board_masked(unsigned *s_board, unsigned *s_mask, unsigned *s_temp, unsigned *seeds, unsigned stride)
 {
+	unsigned idx = threadIdx.x;
+	
 	if (idx < dc_board_size) {
 		if (dc_piece_ratioO > RandUniform(seeds + idx, stride) && !s_mask[idx]) s_board[idx] = 1;
 		else s_board[idx] = 0;
@@ -1892,10 +1950,10 @@ __device__ void random_board_masked(unsigned *s_board, unsigned *s_mask, unsigne
 	__syncthreads();
 }
 
-__device__ void random_state(unsigned *s_state, unsigned *s_temp, unsigned idx, unsigned *s_seeds, unsigned stride)
+__device__ void random_stateGPU(unsigned *s_state, float *s_temp, unsigned *s_seeds, unsigned stride)
 {
-	random_board(s_state, s_temp, idx, s_seeds, dc_board_size);
-	random_board_masked(s_state + dc_board_size, s_state, s_temp, idx, s_seeds, dc_board_size);
+	random_board(s_state, (unsigned *)s_temp, s_seeds, dc_board_size);
+	random_board_masked(s_state + dc_board_size, s_state, (unsigned *)s_temp, s_seeds, dc_board_size);
 }
 
 
@@ -1930,8 +1988,9 @@ __device__ void random_state(unsigned *s_state, unsigned *s_temp, unsigned idx, 
 //	if(idx < dc_board_size) board[iAgent + idx] = s_board[idx];
 //}
 
-__device__ void reward(unsigned idx, unsigned *s_state, unsigned *s_temp, unsigned *ps_terminal, float *ps_reward)
+__device__ void rewardGPU(unsigned *s_state, unsigned *s_temp, unsigned *ps_terminal, float *ps_reward)
 {
+	unsigned idx = threadIdx.x;
 	if (idx == 0) *ps_terminal = 0;
 	__syncthreads();
 	
@@ -1950,29 +2009,218 @@ __device__ void reward(unsigned idx, unsigned *s_state, unsigned *s_temp, unsign
 	__syncthreads();
 }
 
-__device__ void switch_sides(unsigned idx, unsigned *s_state)
+// Calcualte the value for a state s using the specified weights,
+// storing hidden activation in the specified location and returning the output value
+__device__ void val_for_stateGPU(float *s_wgts, unsigned *s_state, float *s_hidden, float *s_out, float *s_temp)
 {
+	unsigned idx = threadIdx.x;
+	
+	// repeat for each hidden node...
+	for (int iH = 0; iH < dc_num_hidden; iH++) {
+
+		// add in the X-piece and O-piece contributions
+		s_temp[idx] = 0.0f;
+		if (X_BOARDGPU(s_state)[idx]) s_temp[idx] += S_IXH(s_wgts, iH)[idx];
+		if (O_BOARDGPU(s_state)[idx]) s_temp[idx] += S_IOH(s_wgts, iH)[idx];
+		
+		// reduce to get the input value for this hidden node (before adding bias)
+		reduce_board(s_temp);
+		if (idx == 0) s_hidden[iH] = s_temp[0];
+		__syncthreads();
+	}
+	
+	// s_hidden now contains the input to the hidden nodes before adding the bias
+	if (idx < dc_num_hidden){
+		s_hidden[idx] += -1.0f * S_BH(s_wgts)[idx];
+		s_hidden[idx] = sigmoid(s_hidden[idx]);
+		s_out[idx] = s_hidden[idx] * S_HO(s_wgts)[idx];
+	}
+	__syncthreads();
+	
+	reduce_hidden(s_out);
+	if (idx == 0) {
+		// add in the bias to the output, then apply sigmoid
+		s_out[0] += -1.0f * S_BO(s_wgts)[0];
+		s_out[0] = sigmoid(s_out[0]);
+	}
+	__syncthreads();
+}
+
+__device__ void reset_traceGPU(float *s_e)
+{
+	unsigned idx = threadIdx.x;
+	
+	for (int i = 0; i < dc_reps_for_wgts; i++) {
+		if (idx + i * dc_board_size < dc_num_wgts) {
+			s_e[idx + i * dc_board_size] = 0.0f;
+		}
+	}
+	__syncthreads();
+}
+
+__device__ void update_wgtsGPU(float s_alpha, float delta, float *s_wgts, float *s_e)
+{
+	unsigned idx = threadIdx.x;
+	
+	for (int i = 0; i < dc_reps_for_wgts; i++) {
+		if (idx + i * dc_board_size < dc_num_wgts) {
+			s_wgts[idx + i * dc_board_size] += s_alpha * delta * s_e[idx + i * dc_board_size];
+		}
+	}
+	__syncthreads();
+}
+
+__device__ void update_traceGPU(unsigned *s_state, float *s_wgts, float *s_e, float *s_hidden, float *s_out, float lambda, float *s_temp)
+{
+	unsigned idx = threadIdx.x;
+	
+	// decay all existing values
+	for (int i = 0; i < dc_reps_for_wgts; i++) {
+		if (idx + i * dc_board_size < dc_num_wgts) {
+			s_e[idx + i * dc_board_size] *= dc_gamma * lambda;
+		}
+	}
+	__syncthreads();
+	
+	// update weights from hidden layer to output node
+	s_temp[idx] = s_out[0] * (1.0f - s_out[0]);			// store g_prime_i in s_temp[]
+	if (idx < dc_num_hidden) {
+		if (idx == 0) S_BO(s_e)[0] += -1.0f * s_temp[idx];
+		S_HO(s_e)[idx] += s_hidden[idx] * s_temp[idx];
+	}
+	__syncthreads();
+	
+	for (int iH = 0; iH < dc_num_hidden; iH++) {
+		s_temp[idx] = s_hidden[iH] * (1.0f - s_hidden[iH]) * S_HO(s_wgts)[iH] * s_out[0] * (1.0f - s_out[0]);	// g_prime_j
+		if (idx == 0) S_BH(s_e)[iH] += -1.0f * s_temp[idx];
+		if (X_BOARDGPU(s_state)[idx]) S_IXH(s_e, iH)[idx] += s_temp[idx];
+		if (O_BOARDGPU(s_state)[idx]) S_IOH(s_e, iH)[idx] += s_temp[idx];
+	}
+	__syncthreads();
+}
+
+__device__ void switch_sidesGPU(unsigned *s_state)
+{
+	unsigned idx = threadIdx.x;
 	unsigned temp = s_state[idx];
 	s_state[idx] = s_state[idx + dc_board_size];
 	s_state[idx + dc_board_size] = temp;
 }
 
-__device__ void choose_move(unsigned idx, unsigned *s_state, float *s_wgts, float s_hidden, float *s_out)
+__device__ void choose_moveGPU(unsigned *s_state, float *s_temp, float *s_wgts, float *s_hidden, float *s_out, unsigned *ps_terminal, float *ps_reward)
 {
+	unsigned idx = threadIdx.x;
 	
+	// first see if the current board is terminal state
+	unsigned terminal;
+	unsigned noVal = 1;
+	float bestVal;
+	unsigned iBestFrom;
+	unsigned iBestTo;
+	float reward;
+	rewardGPU(s_state, (unsigned *)s_temp, ps_terminal, ps_reward);
+	if (*ps_terminal) return;
+	
+	for (int iFrom = 0; iFrom < dc_board_size; iFrom++) {
+		if (X_BOARDGPU(s_state)[iFrom]) {
+			for (int m = 0; m < MAX_MOVES; m++) {
+				int iTo = dc_moves[m * dc_board_size + iFrom];
+				if (iTo >= 0 && !X_BOARDGPU(s_state)[iTo]){
+					// found a possible move, modify the board and calculate the value
+					unsigned oPiece;
+					if (idx == 0){
+						oPiece = O_BOARDGPU(s_state)[iTo];	// remember if there was an O piece here
+						X_BOARDGPU(s_state)[iFrom] = 0;
+						X_BOARDGPU(s_state)[iTo] = 1;
+						O_BOARDGPU(s_state)[iTo] = 0;
+					}
+					__syncthreads();
+					
+					val_for_stateGPU(s_wgts, s_state, s_hidden, s_out, s_temp);
+					
+					if (idx == 0) {
+						if (noVal || s_out[0] > bestVal) {
+							// record the best move so far
+							iBestFrom = iFrom;
+							iBestTo = iTo;
+							bestVal = s_out[0];
+							noVal = 0;
+						}
+						// restore the state
+						X_BOARDGPU(s_state)[iFrom] = 1;
+						X_BOARDGPU(s_state)[iTo] = 0;
+						O_BOARDGPU(s_state)[iTo] = oPiece;
+					}
+					__syncthreads();
+				}
+			}
+		}
+	}
+	
+	// do the best move
+	if (idx == 0) {
+		X_BOARDGPU(s_state)[iBestFrom] = 0;
+		X_BOARDGPU(s_state)[iBestTo] = 1;
+		O_BOARDGPU(s_state)[iBestTo] = 0;
+	}
+	__syncthreads();
+	
+	val_for_stateGPU(s_wgts, s_state, s_hidden, s_out, s_temp);
 }
 
-__device__ void take_action(unsigned idx, unsigned *s_state, unsigned *s_temp, float *s_owgts, float *s_hidden, float *s_out, unsigned *ps_terminal, float *s_ophidden, float *ps_reward)
+__device__ void take_actionGPU(unsigned *s_state, float *s_temp, float *s_owgts, float *s_hidden, float *s_out, unsigned *ps_terminal, float *s_ophidden, float *ps_reward)
 {
-	reward(idx, s_state, s_temp, ps_terminal, ps_reward);
+	rewardGPU(s_state, (unsigned *)s_temp, ps_terminal, ps_reward);
 	if (!*ps_terminal) {
-		switch_sides(idx, s_state);
-//		choose_move(idx, s_state, s_owgts, s_hidden, s_out);
-//		switch_sides(idx, s_state);
-		reward(idx, s_state, s_temp, ps_terminal, ps_reward);
+		switch_sidesGPU(s_state);
+		choose_moveGPU(s_state, s_temp, s_owgts, s_ophidden, s_out, ps_terminal, ps_reward);
+		switch_sidesGPU(s_state);
+		rewardGPU(s_state, (unsigned *)s_temp, ps_terminal, ps_reward);
 	}
 	__syncthreads();
 }
+
+// copy weights from global memory to compact, shared memory
+// idx is [0, board_size)
+// g_wgts points to weights for this agent
+__device__ void copy_wgts_to_s(float *g_wgts, float *s_wgts)
+{
+	unsigned idx = threadIdx.x;
+	for (int iH = 0; iH < dc_num_hidden; iH++) {
+		S_IXH(s_wgts, iH)[idx] = G_IXH(g_wgts, iH)[idx];
+		S_IOH(s_wgts, iH)[idx] = G_IOH(g_wgts, iH)[idx];
+	}
+	
+	if (idx < dc_num_hidden) {
+		S_BH(s_wgts)[idx] = G_BH(g_wgts)[idx];
+		S_HO(s_wgts)[idx] = G_HO(g_wgts)[idx];
+	}
+
+	if (idx == 0) {
+		S_BO(s_wgts)[idx] = G_BO(g_wgts)[idx];
+	}
+	__syncthreads();
+}
+
+__device__ void copy_wgts_to_g(float *s_wgts, float *g_wgts)
+{
+	unsigned idx = threadIdx.x;
+	for (int iH = 0; iH < dc_num_hidden; iH++) {
+		G_IXH(g_wgts, iH)[idx] = S_IXH(s_wgts, iH)[idx];
+		G_IOH(g_wgts, iH)[idx] = S_IOH(s_wgts, iH)[idx];
+	}
+	
+	if (idx < dc_num_hidden) {
+		G_BH(g_wgts)[idx] = S_BH(s_wgts)[idx];
+		G_HO(g_wgts)[idx] = S_HO(s_wgts)[idx];
+	}
+
+	if (idx == 0) {
+		G_BO(g_wgts)[idx] = S_BO(s_wgts)[idx];
+	}
+	__syncthreads();
+}
+
 
 // block number is the agent number,
 // threads per block is board_size
@@ -1988,14 +2236,17 @@ __global__ void learn_kernel(unsigned *seeds, float *wgts, float *e, float *ag2_
 	__shared__ float s_reward;
 	__shared__ float s_lambda;
 	__shared__ float s_alpha;
+	__shared__ float s_V;
+	__shared__ float s_V_prime;
+	__shared__ float s_delta;
 	__shared__ unsigned s_terminal;
 	__shared__ unsigned s_ui;
 
 	// dynamic shared memory
 	extern __shared__ unsigned s_seeds[];						// 4 * dc_board_size
 	unsigned *s_state = s_seeds + 4 * dc_board_size;			// dc_state_size
-	unsigned *s_temp = s_state + dc_state_size;					// dc_board_size
-	float *s_hidden = (float *)(s_temp + dc_board_size);		// dc_num_hidden
+	float *s_temp = (float *)(s_state + dc_state_size);			// dc_board_size
+	float *s_hidden = s_temp + dc_board_size;		// dc_num_hidden
 	float *s_out = s_hidden + dc_num_hidden;					// dc_num_hidden
 	float *s_ophidden = s_out + dc_num_hidden;					// dc_num_hidden
 	float *s_wgts = s_ophidden + dc_num_hidden;					// dc_num_wgts
@@ -2017,33 +2268,49 @@ __global__ void learn_kernel(unsigned *seeds, float *wgts, float *e, float *ag2_
 	s_seeds[idx + 2*dc_board_size] = seeds[iAgent * 4 * dc_board_size + idx + 2*dc_board_size];
 	s_seeds[idx + 3*dc_board_size] = seeds[iAgent * 4 * dc_board_size + idx + 3*dc_board_size];
 	
-	for (int i = 0; i < dc_reps_for_wgts; i++) {
-		if (idx + i*dc_board_size < dc_num_wgts) {
-			s_wgts[idx + i*dc_board_size] = wgts[iAgent * dc_wgts_stride + i*dc_board_size];
-			s_e[idx + i*dc_board_size] = 0.0f; //e[iAgent * dc_num_wgts + i*dc_board_size];
-//			s_opwgts[idx] = ag2_wgts[iAgent * dc_num_wgts + i*dc_board_size];
-		}
-	}
+	copy_wgts_to_s(wgts + iAgent * dc_wgts_stride, s_wgts);
+	copy_wgts_to_s(e + iAgent * dc_wgts_stride, s_e);
+	copy_wgts_to_s(ag2_wgts, s_opwgts);
 
 	unsigned turn = 0;
 	unsigned total_turns = 0;
 	
 	// skip this for testing so agent starts with the same initial state as CPU
-//	random_state(s_state, s_temp, idx, s_seeds, dc_board_size);
+//	random_stateGPU(s_state, s_temp, s_seeds, dc_board_size);
 
 //	if (idx == 0) s_rand = RandUniform(s_seeds, dc_board_size);
 //	__syncthreads();
 
+	
 	s_reward = 0.0f;
 	if (dc_ag.next_to_play[iAgent]) {
-		take_action(idx, s_state, s_temp, s_opwgts, s_hidden, s_out, &s_terminal, s_ophidden, &s_reward);
+		take_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_terminal, s_ophidden, &s_reward);
 		++turn;
 	}
 	__syncthreads();
-//	dc_ag.alpha[iAgent] = s_reward;
 	
-//	float V = choose_move(s_state, s_wgts, s_hidden, s_out);
-//	update_trace(s_state, s_wgts, s_e, s_hidden, s_out, s_lambda);
+	choose_moveGPU(s_state, s_temp, s_wgts, s_hidden, s_out, &s_terminal, &s_reward);
+
+	if (idx == 0) s_V = s_out[0];
+	__syncthreads();
+	
+	update_traceGPU(s_state, s_wgts, s_e, s_hidden, s_out, s_lambda, s_temp);
+	
+	while (total_turns++ < dc_episode_length) {
+		take_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_terminal, s_ophidden, &s_reward);
+		++turn;
+		if (s_terminal || (turn == dc_max_turns)) {
+			break;
+		}
+		choose_moveGPU(s_state, s_temp, s_wgts, s_hidden, s_out, &s_terminal, &s_reward);
+		if (idx == 0){
+			s_V_prime = s_out[0];
+			s_delta = s_reward + (s_terminal ? 0.0f : (dc_gamma * s_V_prime)) - s_V;
+		}
+		__syncthreads();
+		
+		update_wgtsGPU(s_alpha, s_delta, s_wgts, s_e);
+	}
 	
 	// copy values back to global memory
 	dc_ag.states[iAgent * dc_state_size + idx] = s_state[idx];
@@ -2054,11 +2321,8 @@ __global__ void learn_kernel(unsigned *seeds, float *wgts, float *e, float *ag2_
 	dc_ag.seeds[iAgent * dc_board_size * 4 + idx + 2*dc_board_size] = s_seeds[idx + 2*dc_board_size];
 	dc_ag.seeds[iAgent * dc_board_size * 4 + idx + 3*dc_board_size] = s_seeds[idx + 3*dc_board_size];
 
-	for (int i = 0; i < dc_reps_for_wgts; i++) {
-		if (idx + i*dc_board_size < dc_num_wgts) {
-			wgts[iAgent * dc_wgts_stride + i*dc_board_size] = s_wgts[idx + i*dc_board_size];
-		}
-	}
+	copy_wgts_to_g(s_wgts, wgts + iAgent * dc_wgts_stride);
+	copy_wgts_to_g(s_e, e + iAgent * dc_wgts_stride);
 
 }
 
@@ -2088,7 +2352,7 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 	dim3 gridDim(g_p.num_agents);
 
 	PRE_KERNEL("learn_kernel");
-	learn_kernel<<<gridDim, blockDim, dynamic_shared_mem()>>>(agGPU->seeds, agGPU->wgts, agGPU->e, NULL);
+	learn_kernel<<<gridDim, blockDim, dynamic_shared_mem()>>>(agGPU->seeds, agGPU->wgts, agGPU->e, agGPU->wgts);
 	POST_KERNEL(learn_kernel);
 #ifdef DUMP_FINAL_AGENTS_GPU
 	dump_agentsGPU("agents after learning on GPU", agGPU, 1);

@@ -21,3 +21,16 @@ unsigned log2ui(unsigned x)
 	}
 	return result;
 }
+
+// calculate the largest power of two less than x
+unsigned halfpow2(unsigned x)
+{
+	unsigned result = 1;
+	
+	// keep doubling until we equal or exceed x
+	while (result < x) result <<= 1;
+	
+	// back off the last doubling and return
+	result >>= 1;
+	return result;
+}

@@ -169,6 +169,17 @@ unsigned *host_copyui(unsigned *d_data, unsigned count_data)
 	return data;
 }
 
+int *host_copyi(int *d_data, unsigned count_data)
+{
+	unsigned size_data = count_data * sizeof(int);
+	int *data = (int *)malloc(size_data);
+	#ifdef TRACE_DEVICE_ALLOCATIONS
+		printf("[host_copyi] int data at %p count = %d\n", d_data, count_data);
+	#endif
+	CUDA_SAFE_CALL(cudaMemcpy(data, d_data, size_data, cudaMemcpyDeviceToHost));
+	return data;
+}
+
 void host_dumpf(const char *str, float *data, unsigned nRows, unsigned nCols)
 {
 	printf("%s\n", str);
@@ -210,9 +221,33 @@ void host_dumpui(const char *str, unsigned *data, unsigned nRows, unsigned nCols
 	}
 }
 
+void host_dumpi(const char *str, int *data, unsigned nRows, unsigned nCols)
+{
+	printf("%s\n", str);
+	printf("      ");
+	for (int j = 0; j < nCols; j++) {
+		printf("%7d   ", j);
+	}
+	printf("\n");
+	for (int i = 0; i < nRows; i++) {
+		printf("[%4d]", i);
+		for (int j = 0; j < nCols; j++) {
+			printf("%10d", data[i * nCols + j]);
+		}
+		printf("\n");
+	}
+}
+
 void device_dumpui(const char *str, unsigned *d_data, unsigned nRows, unsigned nCols)
 {
 	unsigned *data = host_copyui(d_data, nRows * nCols);
 	host_dumpui(str, data, nRows, nCols);
+	if(data) free(data);
+}
+
+void device_dumpi(const char *str, int *d_data, unsigned nRows, unsigned nCols)
+{
+	int *data = host_copyi(d_data, nRows * nCols);
+	host_dumpi(str, data, nRows, nCols);
 	if(data) free(data);
 }

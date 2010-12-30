@@ -43,6 +43,9 @@
 #define X_BOARD(state) (state)
 #define O_BOARD(state) ((state) + g_p.board_size)
 
+#define X_BOARDGPU(state) (state)
+#define O_BOARDGPU(state) ((state) + dc_board_size)
+
 #define NAME_BUFF_SIZE 16	// buffer size for agent names
 
 // PARAMS structure is a convenient place to hold all dynamic parameters
@@ -81,6 +84,7 @@ typedef struct {
 	unsigned state_size;		// 2 * board_size
 	unsigned half_board_size;	// biggest power of two less than board_size, used for reductions
 								// on the GPU
+	unsigned half_hidden;
 	unsigned num_wgts;			// num_hidden * (2*board_size + 3) = space used for weight array
 								// in compact format, used for shared memory
 	unsigned wgts_stride;		// MAX_STATE_SIZE * (num_hidden + 2), this value is the stride

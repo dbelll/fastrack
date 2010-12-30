@@ -80,12 +80,15 @@ void device_fillf(float val, float *d_data, unsigned count);
 // returned pointer must be ultimately freed on the host
 float *host_copyf(float *d_data, unsigned count);
 unsigned *host_copyui(unsigned *d_data, unsigned count);
+int *host_copyui(int *d_data, unsigned count);
 
 
 void host_dumpf(const char *str, float *data, unsigned nRows, unsigned nCols);
 void device_dumpf(const char *str, float *data, unsigned nRows, unsigned nCols);
 void host_dumpui(const char *str, unsigned *data, unsigned nRows, unsigned nCols);
+void host_dumpi(const char *str, int *data, unsigned nRows, unsigned nCols);
 void device_dumpui(const char *str, unsigned *data, unsigned nRows, unsigned nCols);
+void device_dumpi(const char *str, int *data, unsigned nRows, unsigned nCols);
 
 #ifdef TRACE_DEVICE_ALLOCATIONS
 
