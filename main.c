@@ -67,6 +67,7 @@ void dump_params(PARAMS p)
 	printf("   num_sessions     %7d\n", p.num_sessions);
 	printf("   episode_length   %7d\n", p.episode_length);
 	printf("   warmup_length    %7d\n", p.warmup_length);
+	printf("   benchmark games  %7d\n", p.benchmark_games);
 	printf("   alpha            %7.4f\n", p.alpha);
 	printf("   epsilon          %7.4f\n", p.epsilon);
 	printf("   gamma            %7.4f\n", p.gamma);
@@ -113,6 +114,7 @@ PARAMS read_params(int argc, const char **argv)
 	p.num_sessions = GET_PARAM("NUM_SESSIONS", 16);	
 	p.episode_length = GET_PARAM("EPISODE_LENGTH", 256);
 	p.warmup_length = GET_PARAM("WARMUP_LENGTH", 256);
+	p.benchmark_games = GET_PARAM("BENCHMARK_GAMES", 1000);
 	
 	p.run_on_CPU = PARAM_PRESENT("CPU");
 	p.run_on_GPU = PARAM_PRESENT("GPU");
@@ -140,7 +142,7 @@ PARAMS read_params(int argc, const char **argv)
 	
 	p.champ = AGENT_FILE_CHAMP;
 	
-	printf("[FASTRACK][BOARD_SIZE %06d][NUM_PIECES %3d][MAX_TURNS %3d][SEED%10d][NUM_HIDDEN%4d][INIT_WGT_MIN%7.4f][INIT_WGT_MAX%7.4f][ALPHA%7.4f][EPSILON%7.4f][GAMMA%7.4f][LAMBDA%7.4f][NUM_AGENTS%7d][NUM_SESSIONS%7d][EPISODE_LENGTH%7d][WARMUP_LENGTH%7d]\n", 1000*p.board_width + p.board_height, p.num_pieces, p.max_turns, p.seed, p.num_hidden, p.init_wgt_min, p.init_wgt_max, p.alpha, p.epsilon, p.gamma, p.lambda, p.num_agents, p.num_sessions, p.episode_length, p.warmup_length);
+	printf("[FASTRACK][BOARD_SIZE %06d][NUM_PIECES %3d][MAX_TURNS %3d][SEED%10d][NUM_HIDDEN%4d][INIT_WGT_MIN%7.4f][INIT_WGT_MAX%7.4f][ALPHA%7.4f][EPSILON%7.4f][GAMMA%7.4f][LAMBDA%7.4f][NUM_AGENTS%7d][NUM_SESSIONS%7d][EPISODE_LENGTH%7d][WARMUP_LENGTH%7d][BENCHMARK_GAMES%7d]\n", 1000*p.board_width + p.board_height, p.num_pieces, p.max_turns, p.seed, p.num_hidden, p.init_wgt_min, p.init_wgt_max, p.alpha, p.epsilon, p.gamma, p.lambda, p.num_agents, p.num_sessions, p.episode_length, p.warmup_length, p.benchmark_games);
 
 	printf("\n");
 	

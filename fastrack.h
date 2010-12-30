@@ -17,7 +17,7 @@
 #define LEARNING_LOG_FILE "standings.csv"
 #define AGENT_FILE_OUT "knight_out.agent"
 #define AGENT_FILE_CHAMP "knight57n4v11.agent"
-#define CHAMP_GAMES 1000
+//#define CHAMP_GAMES 1000
 
 #define REWARD_WIN 1.00f
 #define REWARD_LOSS 0.00f
@@ -68,9 +68,10 @@ typedef struct {
 	float lambda;				// default lambda
 	
 	unsigned num_agents;		// number of agents in population 
-	unsigned num_sessions;		// number of learning sessions with num_agents episodes
+	unsigned num_sessions;		// number of learning sessions with num_agents episodes in each
 	unsigned episode_length;	// number of time steps in each learning episode
 	unsigned warmup_length;		// number of time steps for initial training against RAND
+	unsigned benchmark_games;	// number of games to play vs. champ after each learning session
 	
 	unsigned run_on_CPU;		// flags
 	unsigned run_on_GPU;
