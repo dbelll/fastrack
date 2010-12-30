@@ -121,9 +121,18 @@ PARAMS read_params(int argc, const char **argv)
 		exit(-1);
 	}
 	
-	p.num_wgts = p.num_hidden * (2 * p.board_size + 3);	// number of weights for one agent
-//	p.wgts_stride = MAX_STATE_SIZE * (p.num_hidden + 2);	// room allocated for one agent's wgts
-	p.wgts_stride = p.num_wgts;
+	p.num_wgts = calc_num_wgts(p.num_hidden, p.board_size);
+	p.wgts_stride = calc_wgts_stride(p.num_hidden, p.board_size);
+//#if GLOBAL_WGTS_FORMAT == 1
+//	p.num_wgts = p.num_hidden * (2 * p.board_size + 3);
+//	p.wgts_stride = p.num_wgts;
+//#elif GLOBAL_WGTS_FORMAT == 2
+//	p.num_wgts = p.num_hidden * (2 * p.board_size + 2) + 1;
+//	p.wgts_stride = MAX_STATE_SIZE * (p.num_hidden + 2);
+//#else
+//	printf("***ERROR*** unknown GLOBAL_WGTS_FORMAT value of %d\n", GLOBAL_WGTS_FORMAT);
+//	exit(-1);
+//#endif
 	p.num_agent_floats = (3*p.wgts_stride + 3);	// total number of float values for an agent
 												// (wgts, e, saved_wgts, alpha, epsilon, lambda)
 	p.timesteps = p.num_sessions * p.num_agents * p.episode_length;
@@ -168,10 +177,14 @@ int main(int argc, const char **argv)
 	printf("done dump results\n");
 	
 	// Save best agent to file from GPU run, or if no GPU run, from the CPU run
-	if(p.run_on_GPU && resultsGPU) save_agent(AGENT_FILE_OUT, agGPU, resultsGPU->iBest);
-	else if (p.run_on_CPU && resultsCPU) save_agent(AGENT_FILE_OUT, agCPU, resultsCPU->iBest);
+	if(p.run_on_GPU && resultsGPU){
+		save_agent(AGENT_FILE_OUT, agGPU, resultsGPU->iBest);
+		printf("saving GPU agent\n");
+	} 
+	else if (p.run_on_CPU && resultsCPU){
+		save_agent(AGENT_FILE_OUT, agCPU, resultsCPU->iBest);
+		printf("saving CPU agent\n");
+	} 
 	
-	printf("saving agent\n");
-
 	return 0;
 }

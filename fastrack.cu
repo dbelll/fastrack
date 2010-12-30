@@ -14,6 +14,7 @@
 #include "rand_utils.h"
 #include "misc_utils.h"
 #include "cuda_rand.cu"
+#include "main.h"
 
 // global random number seeds are used for any non-agent random numbers,
 static unsigned g_seeds[4] = {0, 0, 0, 0};
@@ -54,28 +55,93 @@ __constant__ int *dc_moves;			// pointer to d_g_moves array on device
 // prototypes
 void freeAgentCPU(AGENT *ag);
 void set_start_state(unsigned *state, unsigned pieces, unsigned *seeds, unsigned stride);
+void dump_all_wgts(float *wgts, unsigned num_hidden);
 
 #pragma mark -
 #pragma mark Helpers
 
-// accessors for the wgts (and e's) 
-
+/*
+	Accessors for the wgts (and e's) 
+	There are separate accessors for global memory and shared memory.  In global memory,
+	the weights are aligned to 128 byte boundaries for faster access.  In shared memory, the
+	weights are stored more compactly.
+	Weight names:
+		BH	bias -> hidden
+		IH	input -> hidden
+		HO	hidden -> output
+		BO	bias -> output
+*/
 //float *pBH(float *w, unsigned iH){ return w + iH; }			// bias to hidden
 //float *pIH(float *w, unsigned iI, unsigned iH){ return w + iH + g_p.num_hidden * (iI + 1);}	// in -> hidden
 //float *pHO(float *w, unsigned iH){ return w + g_p.num_hidden * (1 + g_p.state_size) + iH; } // hidden -> out
 //float *pBO(float *w){ return w + g_p.num_wgts - g_p.num_hidden; }	// bias to output
-float *pBH(float *w, unsigned iH){ return w + iH; }			// bias to hidden
-float *pIH(float *w, unsigned iI, unsigned iH){ return w + iH + g_p.num_hidden * (iI + 1);}	// in -> hidden
-float *pHO(float *w, unsigned iH){ return w + g_p.num_hidden * (1 + g_p.state_size) + iH; } // hidden -> out
-float *pBO(float *w){ return w + g_p.wgts_stride - g_p.num_hidden; }	// bias to output
 
-float BH(float *w, unsigned iH){ return *pBH(w, iH);}
-float IH(float *w, unsigned iI, unsigned iH){ return *pIH(w, iI, iH); }
-float HO(float *w, unsigned iH){ return *pHO(w, iH); }
-float BO(float *w){ return *pBO(w); }
+#if GLOBAL_WGTS_FORMAT == 1
+/*
+	version 1 - compact storage for global and shared memory
+		B->H	(num_hidden)
+		I->H	(state_size * num_hidden)
+		H->O	(num_hidden)
+		B->O	1
+	Weights padded out to be (state_size + 3) * num_hidden values for both shared and global.
+*/
+float *pgBH(float *w, unsigned iH){ return w + iH; }
+float *pgIH(float *w, unsigned iI, unsigned iH){ return w + iH + g_p.num_hidden * (iI + 1);}
+float *pgHO(float *w, unsigned iH){ return w + g_p.num_hidden * (1 + g_p.state_size) + iH; }
+float *pgBO(float *w){ return w + g_p.wgts_stride - g_p.num_hidden; }
 
-// calculates agent pointers based on offset from ag->wgts
-// agent data is organized as follows
+float *psBH(float *w, unsigned iH){ return w + iH; }
+float *psIH(float *w, unsigned iI, unsigned iH){ return w + iH + g_p.num_hidden * (iI + 1);}
+float *psHO(float *w, unsigned iH){ return w + g_p.num_hidden * (1 + g_p.state_size) + iH; }
+float *psBO(float *w){ return w + g_p.wgts_stride - g_p.num_hidden; }
+
+#elif GLOBAL_WGTS_FORMAT == 2
+/*
+	version 2 - global has I->H first with rows corresponding to each hidden node and colums
+				padded out to 2 * MAX_STATE_SIZE.  The two boards start at offset 0 and MAX_BOARD_SIZE.
+				The B->H and H->O values are next and each is padded out to 2 * MAX_STATE_SIZE columns
+				The single value B->O is in the last value of the H->O area.
+		I->H	(num_hidden * MAX_STATE_SIZE)
+		B->H	(MAX_STATE_SIZE)
+		H->O	(MAX_STATE_SIZE-1)
+		B->O	1
+	Global weights take up (MAX_STATE_SIZE + 2) * num_hidden + 1 values.
+	
+	Compact format removes all padding:
+		I->H	(num_hidden * state_size)
+		B->H	num_hidden
+		H->O	num_hidden
+		B->O	1
+	Total size for compact format is (state_size + 2)*num_hidden + 1	
+*/
+
+float *pgIXH(float *w, unsigned iX, unsigned iH){ return w + iH * MAX_STATE_SIZE + iX; }
+float *pgIOH(float *w, unsigned iO, unsigned iH){ return w + iH * MAX_STATE_SIZE + MAX_BOARD_SIZE + iO; }
+float *pgIH(float *w, unsigned iI, unsigned iH){ 
+	return (iI >= g_p.board_size) ? pgIOH(w, iI-g_p.board_size, iH) : pgIXH(w, iI, iH); 
+}
+float *pgBH(float *w, unsigned iH){ return w + g_p.num_hidden * MAX_STATE_SIZE + iH; }
+float *pgHO(float *w, unsigned iH){ return w + (1 + g_p.num_hidden) * MAX_STATE_SIZE + iH; }
+float *pgBO(float *w){ return w + g_p.wgts_stride - 1; }
+
+float *psIH(float *w, unsigned iI, unsigned iH){ return w + iH * g_p.state_size + iI; }
+float *psBH(float *w, unsigned iH){ return w + g_p.state_size * g_p.num_hidden + iH; }
+float *psHO(float *w, unsigned iH){ return w + g_p.state_size * (g_p.num_hidden + 1) + iH; }
+float *psBO(float *w){ return w + g_p.num_wgts - 1; }
+#endif
+
+float gBH(float *w, unsigned iH){ return *pgBH(w, iH);}
+float gIH(float *w, unsigned iI, unsigned iH){ return *pgIH(w, iI, iH); }
+float gHO(float *w, unsigned iH){ return *pgHO(w, iH); }
+float gBO(float *w){ return *pgBO(w); }
+float sBH(float *w, unsigned iH){ return *psBH(w, iH);}
+float sIH(float *w, unsigned iI, unsigned iH){ return *psIH(w, iI, iH); }
+float sHO(float *w, unsigned iH){ return *psHO(w, iH); }
+float sBO(float *w){ return *psBO(w); }
+
+// Calculate agent pointers to float values based on offset from ag->wgts
+// Each block of weights or eligibility traces is wgts_stride * num_agents in size
+// Each parameter value is num_agents in size
 void set_agent_float_pointers(AGENT *ag)
 {
 	ag->e = ag->wgts + g_p.wgts_stride * g_p.num_agents;
@@ -167,13 +233,13 @@ float val_for_state(float *wgts, unsigned *state, float *hidden, float *out)
 	for (unsigned iHidden = 0; iHidden < g_p.num_hidden; iHidden++) {
 		// first add in the bias
 //		hidden[iHidden] = -1.0f * wgts[iHidden];
-		hidden[iHidden] = -1.0f * BH(wgts, iHidden);
+		hidden[iHidden] = -1.0f * gBH(wgts, iHidden);
 
 		// next loop update for all the input nodes
 		for (int i = 0; i < g_p.board_size * 2; i++) {
 			if (state[i]) {
 //				hidden[iHidden] += wgts[iHidden + g_p.num_hidden * (1 + i)];
-				hidden[iHidden] += IH(wgts, i, iHidden);
+				hidden[iHidden] += gIH(wgts, i, iHidden);
 			}
 		}
 		
@@ -182,12 +248,12 @@ float val_for_state(float *wgts, unsigned *state, float *hidden, float *out)
 
 		// accumulate into the output
 //		out[0] += hidden[iHidden] * wgts[iHidden + g_p.num_hidden * (1 + g_p.board_size * 2)];
-		out[0] += hidden[iHidden] * HO(wgts, iHidden);
+		out[0] += hidden[iHidden] * gHO(wgts, iHidden);
 	}
 	
 	// finally, add the bias to the output value and apply the sigmoid function
 //	out[0] += -1.0f * wgts[g_p.num_wgts - g_p.num_hidden];
-	out[0] += -1.0f * BO(wgts);
+	out[0] += -1.0f * gBO(wgts);
 	out[0] = sigmoid(out[0]);
 	return out[0];
 }
@@ -385,7 +451,7 @@ void save_agent(const char *file, AGENT *ag, unsigned iAg)
 		return;
 	}
 	// current file version number
-	static unsigned version = 1;
+	static unsigned version = FILE_FORMAT;
 	
 	fprintf(f, "%d\n", version);
 	fprintf(f, "%d\n", g_p.board_width);
@@ -393,99 +459,162 @@ void save_agent(const char *file, AGENT *ag, unsigned iAg)
 	fprintf(f, "%d\n", g_p.num_pieces);
 	fprintf(f, "%d\n", g_p.max_turns);
 	fprintf(f, "%d\n", g_p.num_hidden);
-	fprintf(f, "%d\n", g_p.wgts_stride);
-	for (int i = 0; i < g_p.wgts_stride; i++) {
-		fprintf(f, "%f\n", ag->wgts[iAg * g_p.wgts_stride + i]);
-	}
+	fprintf(f, "%d\n", g_p.num_wgts);
+//	for (int i = 0; i < g_p.wgts_stride; i++) {
+//		fprintf(f, "%f\n", ag->wgts[iAg * g_p.wgts_stride + i]);
+//	}
+	
+	// B->H
+	for (int iH = 0; iH < g_p.num_hidden; iH++) fprintf(f, "%f\n", gBH(ag->wgts, iH));
+	// I->H
+	for (int iI = 0; iI < g_p.state_size; iI++)
+		for (int iH = 0; iH < g_p.num_hidden; iH++) 
+			fprintf(f, "%f\n", gIH(ag->wgts, iI, iH));
+	// H->O
+	for (int iH = 0; iH < g_p.num_hidden; iH++) fprintf(f, "%f\n", gHO(ag->wgts, iH));
+	// B->O
+	fprintf(f, "%f\n", gBO(ag->wgts));
+	
 	fclose(f);
 }
 
-void read_agent(FILE *f, AGENT *ag, unsigned iAg)
+// Read weights from the current file position and store in global format at wgts
+// wgts must have been allocated to hold g_p.wgts_stride values
+// Board width, height, and number of hidden nodes must match global parameters
+// File format for weights is:
+//		B->H		(num_hidden)
+//		I->H		(state_size * num_hidden)
+//		H->O		(num_hidden)
+//		B->O		1
+void read_wgts_aux(FILE *f, float *wgts, unsigned version, unsigned w, unsigned h, unsigned num_hidden)
 {
-	unsigned version;
-	unsigned board_width, board_height;
-	unsigned num_pieces;
-	unsigned max_turns;
-	unsigned num_hidden;
-	unsigned wgts_stride;
+	if (w != g_p.board_width || h != g_p.board_height || num_hidden != g_p.num_hidden) {
+		printf("*** ERROR *** agent file does not match current parameters:\n");
+		printf("            parameters  agent file\n");
+		printf("board size   (%3dx%3d)   (%3dx%3d)\n", g_p.board_width, g_p.board_height, w, h);
+		printf("hidden nodes    %3d         %3d\n", g_p.num_hidden, num_hidden);
+		return;
+	}
 	
-	fscanf(f, "%d", &version);
-
 	switch (version) {
 		case 1:
-			fscanf(f, "%u", &board_width);
-			fscanf(f, "%u", &board_height);
-			if (board_width != g_p.board_width || board_height != g_p.board_height) {
-				printf("*** AGENT ERROR *** board size mismatch\n");
-				break;
-			}
-			fscanf(f, "%u", &num_pieces);
-			fscanf(f, "%u", &max_turns);
-			fscanf(f, "%u", &num_hidden);
-			fscanf(f, "%u", &wgts_stride);
-			for (int i = 0; i < wgts_stride; i++) {
-				fscanf(f, "%f", ag->wgts + iAg * g_p.wgts_stride + i);
-			}
+			for (int iH = 0; iH < g_p.num_hidden; iH++) fscanf(f, "%f", pgBH(wgts, iH));
+			for (int iI = 0; iI < g_p.state_size; iI++)
+				for (int iH = 0; iH < g_p.num_hidden; iH++)
+					fscanf(f, "%f", pgIH(wgts, iI, iH));
+			for (int iH = 0; iH < g_p.num_hidden; iH++) fscanf(f, "%f", pgHO(wgts, iH));
+			fscanf(f, "%f", pgBO(wgts));
 			break;
 		default:
+			printf("*** ERROR *** unknown file format %d\n", version);
 			break;
 	}
 }
 
-unsigned read_num_wgts(FILE *f)
+// Read an agent's values from a file.  AGENT structure and all members are pre-allocated.
+//void read_agent(FILE *f, AGENT *ag)
+//{
+//	unsigned version;
+//	unsigned board_width, board_height;
+//	unsigned num_pieces;
+//	unsigned max_turns;
+//	unsigned num_hidden;
+//	unsigned num_wgts;
+//	
+//	fscanf(f, "%d", &version);
+//
+//	switch (version) {
+//		case 1:
+//			fscanf(f, "%u", &board_width);
+//			fscanf(f, "%u", &board_height);
+//			fscanf(f, "%u", &num_pieces);
+//			fscanf(f, "%u", &max_turns);
+//			fscanf(f, "%u", &num_hidden);
+//			fscanf(f, "%u", &num_wgts);
+//			read_wgts_aux(f, ag->wgts, version, board_width, board_height, num_hidden);		
+//			break;
+//		default:
+//			printf("*** ERROR *** unknown file format %d\n", version);
+//			break;
+//	}
+//}
+//
+//unsigned read_num_wgts(FILE *f)
+//{
+//	unsigned version;
+//	unsigned board_width, board_height;
+//	unsigned num_pieces;
+//	unsigned max_turns;
+//	unsigned num_hidden;
+//	unsigned wgts_stride;
+//	fseek(f, 0L, SEEK_SET);
+//	fscanf(f, "%d", &version);
+//
+//	switch (version) {
+//		case 1:
+//			fscanf(f, "%u", &board_width);
+//			fscanf(f, "%u", &board_height);
+//			fscanf(f, "%u", &num_pieces);
+//			fscanf(f, "%u", &max_turns);
+//			fscanf(f, "%u", &num_hidden);
+//			fscanf(f, "%u", &wgts_stride);
+//			break;
+//		default:
+//			break;
+//	}
+//	return wgts_stride;
+//}
+//
+//unsigned read_num_hidden(FILE *f)
+//{
+//	unsigned version;
+//	unsigned board_width, board_height;
+//	unsigned num_pieces;
+//	unsigned max_turns;
+//	unsigned num_hidden;
+//	unsigned wgts_stride;
+//	fseek(f, 0L, SEEK_SET);
+//	fscanf(f, "%d", &version);
+//
+//	switch (version) {
+//		case 1:
+//			fscanf(f, "%u", &board_width);
+//			fscanf(f, "%u", &board_height);
+//			fscanf(f, "%u", &num_pieces);
+//			fscanf(f, "%u", &max_turns);
+//			fscanf(f, "%u", &num_hidden);
+//			fscanf(f, "%u", &wgts_stride);
+//			break;
+//		default:
+//			break;
+//	}
+//	printf("read_num_hidden: (%dx%d) board, %d pieces, %d turns, %d num_hidden, %d wgts_stride\n", board_width, board_height, num_pieces, max_turns, num_hidden, wgts_stride);
+//	return num_hidden;
+//}
+
+#if GLOBAL_WGTS_FORMAT == 1
+unsigned calc_num_wgts(unsigned num_hidden, unsigned board_size)
 {
-	unsigned version;
-	unsigned board_width, board_height;
-	unsigned num_pieces;
-	unsigned max_turns;
-	unsigned num_hidden;
-	unsigned wgts_stride;
-	fseek(f, 0L, SEEK_SET);
-	fscanf(f, "%d", &version);
-
-	switch (version) {
-		case 1:
-			fscanf(f, "%u", &board_width);
-			fscanf(f, "%u", &board_height);
-			fscanf(f, "%u", &num_pieces);
-			fscanf(f, "%u", &max_turns);
-			fscanf(f, "%u", &num_hidden);
-			fscanf(f, "%u", &wgts_stride);
-			break;
-		default:
-			break;
-	}
-	return wgts_stride;
+	return num_hidden * (2 * board_size + 3);
 }
-
-unsigned read_num_hidden(FILE *f)
+unsigned calc_wgts_stride(unsigned num_hidden, unsigned board_size)
 {
-	unsigned version;
-	unsigned board_width, board_height;
-	unsigned num_pieces;
-	unsigned max_turns;
-	unsigned num_hidden;
-	unsigned wgts_stride;
-	fseek(f, 0L, SEEK_SET);
-	fscanf(f, "%d", &version);
-
-	switch (version) {
-		case 1:
-			fscanf(f, "%u", &board_width);
-			fscanf(f, "%u", &board_height);
-			fscanf(f, "%u", &num_pieces);
-			fscanf(f, "%u", &max_turns);
-			fscanf(f, "%u", &num_hidden);
-			fscanf(f, "%u", &wgts_stride);
-			break;
-		default:
-			break;
-	}
-	printf("read_num_hidden: (%dx%d) board, %d pieces, %d turns, %d num_hidden, %d wgts_stride\n", board_width, board_height, num_pieces, max_turns, num_hidden, wgts_stride);
-	return num_hidden;
+	return calc_num_wgts(num_hidden, board_size);
 }
+#elif GLOBAL_WGTS_FORMAT == 2
+unsigned calc_num_wgts(unsigned num_hidden, unsigned board_size)
+{
+	return num_hidden * (2 * board_size + 2) + 1;
+}
+unsigned calc_wgts_stride(unsigned num_hidden, unsigned board_size)
+{
+	return MAX_STATE_SIZE * (num_hidden + 2);
+}
+#endif
 
-// read in just the weights from an agent file
+// Read in just the weights from an agent file
+// Print a warning if the file does not match global parameters
+// wgts must be pre-allocated to hold wgts_stride values
 void read_wgts(FILE *f, float *wgts)
 {
 	unsigned version;
@@ -493,7 +622,7 @@ void read_wgts(FILE *f, float *wgts)
 	unsigned num_pieces;
 	unsigned max_turns;
 	unsigned num_hidden;
-	unsigned wgts_stride;
+	unsigned num_wgts;
 	
 	fseek(f, 0L, SEEK_SET);
 	fscanf(f, "%d", &version);
@@ -505,16 +634,20 @@ void read_wgts(FILE *f, float *wgts)
 			fscanf(f, "%u", &num_pieces);
 			fscanf(f, "%u", &max_turns);
 			fscanf(f, "%u", &num_hidden);
-			fscanf(f, "%u", &wgts_stride);
-			for (int i = 0; i < wgts_stride; i++) {
-				fscanf(f, "%f", wgts + i);
-//				printf("wgt %d is %9.6f\n", i, wgts[i]);
-			}
+			fscanf(f, "%u", &num_wgts);
+
+			printf("values from agent file:\n");
+			printf("board size: (%3dx%3d)\n", board_width, board_height);
+			printf("num_pieces = %d, max_turns = %d\n", num_pieces, max_turns);
+			printf("num_hidden = %d, num_wgts = %d\n", num_hidden, num_wgts);
+
+			read_wgts_aux(f, wgts, version, board_width, board_height, num_hidden);
 			break;
+			
 		default:
 			break;
 	}
-	printf("read_wgts: (%dx%d) board, %d pieces, %d turns, %d num_hidden, %d wgts_stride\n", board_width, board_height, num_pieces, max_turns, num_hidden, wgts_stride);
+	printf("read_wgts: (%dx%d) board, %d pieces, %d turns, %d num_hidden, %d wgts_stride\n", board_width, board_height, num_pieces, max_turns, num_hidden, num_wgts);
 }
 
 // load weights for champ from a file
@@ -526,12 +659,15 @@ float *load_champ(const char *file)
 		exit(-1);
 	}
 	
-	// allocate an array of the appropriate size to hold champ's weights
-	unsigned wgts_stride = read_num_wgts(f);
-	float *wgts = (float *)malloc(wgts_stride * sizeof(float));
-	
-	// now read the weights from the file to fill the array
+	// allocate an array and read in the weights
+	float *wgts = (float *)malloc(g_p.wgts_stride * sizeof(float));
 	read_wgts(f, wgts);
+	
+#ifdef DUMP_CHAMP_WGTS
+	printf("\n----------------\nchamp weights:\n-----------------\n");
+	dump_all_wgts(wgts, g_p.num_hidden);
+#endif
+
 	fclose(f);
 	return wgts;
 }
@@ -651,59 +787,46 @@ void dump_wgts_header(const char *str)
 }
 
 // dump of weight values from input to hidden
-void dump_wgts_IH(float *wgts, unsigned iIn)
+void dump_wgts_IH(float *wgts, unsigned iI)
 {
-	for (int i = 0; i < g_p.num_hidden; i++) {
-		printf(", %9.4f", IH(wgts, iIn, i));
+	printf("[IN%03d->H]", iI); 
+	for (int iH = 0; iH < g_p.num_hidden; iH++) {
+		printf(", %9.4f", gIH(wgts, iI, iH));
 	}
 	printf("\n");
 }
 
 void dump_wgts_BH(float *wgts)
 {
+	printf("[    B->H]"); 
 	for (int i = 0; i < g_p.num_hidden; i++) {
-		printf(", %9.4f", BH(wgts, i));
+		printf(", %9.4f", gBH(wgts, i));
 	}
 	printf("\n");
 }
 
 void dump_wgts_HO(float *wgts)
 {
+	printf("[    H->O]"); 
 	for (int i = 0; i < g_p.num_hidden; i++) {
-		printf(", %9.4f", HO(wgts, i));
+		printf(", %9.4f", gHO(wgts, i));
 	}
 	printf("\n");
 }
 
-//void dump_wgts(float *wgts)
-//{
-//	for (int i = 0; i < g_p.num_hidden; i++) {
-//		printf(", %9.4f", wgts[i * hidden_stride()]);
-//	}
-//	printf("\n");
-//}
+void dump_wgts_BO(float *wgts)
+{
+	printf("[    B->O], %9.4f\n\n", gBO(wgts));
+}
 
 // print out all weights in a formatted output
 void dump_all_wgts(float *wgts, unsigned num_hidden)
 {
 	dump_wgts_header("[ WEIGHTS]");
-	// get the weight pointer for this agent
-	printf("[    B->H]"); 
-//	dump_wgts(wgts);
-//	dump_wgts(pBH(wgts, 0));
 	dump_wgts_BH(wgts);
-	for (int i = 0; i < g_p.state_size; i++){
-		printf("[IN%03d->H]", i); 
-//		dump_wgts(wgts + (1+i) * num_hidden);
-//		dump_wgts(pIH(wgts, i, 0));
-		dump_wgts_IH(wgts, i);
-	}
-	printf("[    H->O]"); 
-//	dump_wgts(wgts + (1+g_p.state_size) * num_hidden);
-//	dump_wgts(pHO(wgts, 0));
+	for (int i = 0; i < g_p.state_size; i++) dump_wgts_IH(wgts, i);
 	dump_wgts_HO(wgts);
-//	printf("[    B->O], %9.4f\n\n", wgts[(2+g_p.state_size) * num_hidden]);
-	printf("[    B->O], %9.4f\n\n", BO(wgts));
+	dump_wgts_BO(wgts);
 }
 
 void dump_agent(AGENT *agCPU, unsigned iag, unsigned dumpW)
@@ -713,39 +836,20 @@ void dump_agent(AGENT *agCPU, unsigned iag, unsigned dumpW)
 	dump_wgts_header("[ WEIGHTS]");
 	// get the weight pointer for this agent
 	float *pWgts = agCPU->wgts + iag * g_p.wgts_stride;
-	printf("[    B->H]"); 
-//	dump_wgts(pWgts);
-//	dump_wgts(pBH(pWgts, 0));
+
 	dump_wgts_BH(pWgts);
-	for (int i = 0; i < g_p.state_size; i++){
-		printf("[IN%03d->H]", i); 
-//		dump_wgts(pWgts + (1+i) * g_p.num_hidden);
-//		dump_wgts(pIH(pWgts, i, 0));
-		dump_wgts_IH(pWgts, i);
-	}
-//	printf("[    H->O]"); dump_wgts(pWgts + (1+g_p.state_size) * g_p.num_hidden);
-//	printf("[    H->O]"); dump_wgts(pHO(pWgts, 0));
-	printf("[    H->O]"); dump_wgts_HO(pWgts);
-//	printf("[    B->O], %9.4f\n\n", pWgts[(2+g_p.state_size) * g_p.num_hidden]);
-	printf("[    B->O], %9.4f\n\n", BO(pWgts));
+	for (int i = 0; i < g_p.state_size; i++) dump_wgts_IH(pWgts, i);
+	dump_wgts_HO(pWgts);
+	dump_wgts_BO(pWgts);
 
 	if (dumpW) {
 		dump_wgts_header("[    W    ]");
 		// get the W pointer for this agent
 		float *pW = agCPU->e + iag * g_p.wgts_stride;
-//		printf("[    B->H]"); dump_wgts(pW);
-//		printf("[    B->H]"); dump_wgts(pBH(pW, 0));
-		printf("[    B->H]"); dump_wgts_BH(pW);
-		for (int i = 0; i < g_p.state_size; i++){
-//			printf("[IN%03d->H]", i); dump_wgts(pW + (1+i) * g_p.num_hidden);
-//			printf("[IN%03d->H]", i); dump_wgts(pIH(pW, i, 0));
-			printf("[IN%03d->H]", i); dump_wgts_IH(pW, i);
-		}
-//		printf("[    H->O]"); dump_wgts(pW + (1+g_p.state_size) * g_p.num_hidden);
-//		printf("[    H->O]"); dump_wgts(pHO(pW, 0));
-		printf("[    H->O]"); dump_wgts_HO(pW);
-//		printf("[    B->O], %9.4f\n\n", pW[(2+g_p.state_size) * g_p.num_hidden]);
-		printf("[    B->O], %9.4f\n\n", BO(pW));
+		dump_wgts_BH(pW);
+		for (int i = 0; i < g_p.state_size; i++) dump_wgts_IH(pW, i);
+		dump_wgts_HO(pW);
+		dump_wgts_BO(pW);
 	}
 
 	printf("[   alpha], %9.4f\n", agCPU->alpha[iag]);
@@ -848,14 +952,36 @@ void build_move_array()
 	}
 }
 
+float rand_init_wgt(unsigned *seeds, unsigned stride)
+{
+	return g_p.init_wgt_min + (g_p.init_wgt_max - g_p.init_wgt_min) * RandUniform(seeds, stride);
+}
+
 // Reset all agent weights to random initial values and reset trace to 0.0f
 void randomize_agent(AGENT *ag)
 {
-	for (int a = 0; a < g_p.num_agents; a++) {
-		for (int i=0; i < g_p.num_wgts; i++){
-			ag->wgts[a * g_p.wgts_stride + i] = g_p.init_wgt_min + (g_p.init_wgt_max - g_p.init_wgt_min) * RandUniform(g_seeds, 1);
-			ag->e[a * g_p.wgts_stride + i] = 0.0f;
+	for (int iAg = 0; iAg < g_p.num_agents; iAg++) {
+		float *wgts = ag->wgts + iAg * g_p.wgts_stride;
+		float *e = ag->e + iAg * g_p.wgts_stride;
+		// I->H
+		for (int iI = 0; iI < g_p.state_size; iI++)
+			for (int iH = 0; iH < g_p.num_hidden; iH++){
+				*pgIH(wgts, iI, iH) = rand_init_wgt(g_seeds, 1);
+				*pgIH(e, iI, iH) = 0.0f;
+			}
+		// B->H
+		for (int iH = 0; iH < g_p.num_hidden; iH++){
+			*pgBH(wgts, iH) = rand_init_wgt(g_seeds, 1);
+			*pgBH(e, iH) = 0.0f;
 		}
+		// H->O
+		for (int iH = 0; iH < g_p.num_hidden; iH++){
+			*pgHO(wgts, iH) = rand_init_wgt(g_seeds, 1);
+			*pgHO(e, iH) = 0.0f;
+		}
+		// B->O
+		*pgBO(wgts) = rand_init_wgt(g_seeds, 1);
+		*pgBO(e) = 0.0f;
 	}
 }
 
@@ -902,18 +1028,19 @@ AGENT *init_agentsCPU(PARAMS p)
 	
 	printf("init_agentsCPU...\n");
 
-	// save the parameters and calculate any global constants based on the parameters
-	g_p = p;
-	set_global_seeds(p.seed);
-	build_move_array();
-	build_start_state();
+	// save the parameters in a global variable and initialize other global values
+	g_p = p;					// global parameters
+	set_global_seeds(p.seed);	// global seeds
+	build_move_array();			// global move array
+	build_start_state();		// global copy of start state
 
 	// allocate and initialize the agent data on CPU
 	AGENT *ag = (AGENT *)malloc(sizeof(AGENT));
 
 	ag->seeds = (unsigned *)malloc(4 * p.num_agents * p.board_size * sizeof(unsigned));
 	for (int i = 0; i < 4*p.num_agents * p.board_size; i++) ag->seeds[i] = rand();
-	
+
+	// one large allocation for all float data
 	ag->wgts = (float *)malloc(p.num_agent_floats * p.num_agents * sizeof(float));
 	set_agent_float_pointers(ag);	
 	randomize_agent(ag);
@@ -929,17 +1056,19 @@ AGENT *init_agentsCPU(PARAMS p)
 	for (int iAg = 0; iAg < p.num_agents; iAg++) {
 		set_start_state(ag->states + iAg * p.state_size, p.num_pieces, ag->seeds + iAg * p.board_size * 4, p.board_size);
 	}
+	
 	ag->next_to_play = (unsigned *)malloc(p.num_agents * sizeof(unsigned));
 	for (int iAg = 0; iAg < p.num_agents; iAg++) {
 		ag->next_to_play[iAg] = ranf() < 0.5f ? 0 : 1;
 	}
-	
+
 	return ag;
 }
 
 
 AGENT *init_agentsGPU(AGENT *agCPU)
 {
+	// copy agent data to the GPU
 	AGENT *agGPU = (AGENT *)malloc(sizeof(AGENT));
 	agGPU->seeds = device_copyui(agCPU->seeds, 4 * g_p.num_agents * g_p.board_size);
 	agGPU->states = device_copyui(agCPU->states, g_p.num_agents * g_p.state_size);
@@ -954,6 +1083,7 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 	int *d_g_moves = device_copyi(g_moves, g_p.board_size * MAX_MOVES);
 	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_moves", &d_g_moves, sizeof(int *)));
 	
+	// copy parameter values to constant memory
 	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_ag", agGPU, sizeof(AGENT)));
 	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_gamma", &g_p.gamma, sizeof(float)));
 	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_num_hidden", &g_p.num_hidden, sizeof(unsigned)));
@@ -962,13 +1092,13 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_board_size", &g_p.board_size, sizeof(unsigned)));
 	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_num_wgts", &g_p.num_wgts, sizeof(unsigned)));
 	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_wgts_stride", &g_p.wgts_stride, sizeof(unsigned)));
+	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_half_board_size", &g_p.half_board_size, sizeof(unsigned)));
 	
-	unsigned half_board_size = 1;
-	while (half_board_size < g_p.board_size) {
-		half_board_size <<= 1;
-	}
-	half_board_size >>=1;	// now half_board_size is the largest power of two less board_size
-	cudaMemcpyToSymbol("dc_half_board_size", &half_board_size, sizeof(unsigned));
+//	unsigned half_board_size = 1;
+//	while (half_board_size < g_p.board_size) {
+//		half_board_size <<= 1;
+//	}
+//	half_board_size >>=1;	// now half_board_size is the largest power of two less board_size
 	
 	unsigned reps_for_wgts = 1 + (g_p.num_wgts - 1) / g_p.board_size;
 	printf("reps_for_wgts on GPU is %d\n", reps_for_wgts);
@@ -1115,7 +1245,8 @@ float take_action2(unsigned *state, float *owgts, float *hidden, float *out, uns
 	unsigned save_hidden = g_p.num_hidden;
 	unsigned save_num_wgts = g_p.num_wgts;
 	g_p.num_hidden = ohidden;
-	g_p.num_wgts = g_p.num_hidden * (2 * g_p.board_size + 3);
+//	g_p.num_wgts = g_p.num_hidden * (2 * g_p.board_size + 3);
+	g_p.num_wgts = calc_num_wgts(g_p.num_hidden, g_p.board_size);
 	
 	switch_sides(state);
 //	printf("state after switching sides:\n");
@@ -1177,16 +1308,34 @@ void set_start_state(unsigned *state, unsigned pieces, unsigned *seeds, unsigned
 
 void reset_trace(float *e)
 {
-	for (int i = 0; i < g_p.num_wgts; i++) {
-		e[i] = 0.0f;
+//	for (int i = 0; i < g_p.num_wgts; i++) {
+//		e[i] = 0.0f;
+//	}
+	for (int iH = 0; iH < g_p.num_hidden; iH++) {
+		*pgBH(e, iH) = 0.0f;							// B->H
+		for (int iI = 0; iI < g_p.state_size; iI++) {
+			*pgIH(e, iI, iH)  = 0.0f;					// I->H
+		}
+		*pgHO(e, iH) = 0.0f;							// H->O
 	}
+	*pgBO(e) = 0.0f;									// B->O
 }
 
 void update_wgts(float alpha, float delta, float *wgts, float *e)
 {
-	for (int i = 0; i < g_p.num_wgts; i++) {
-		wgts[i] += alpha * delta * e[i];
+//	for (int i = 0; i < g_p.num_wgts; i++) {
+//		wgts[i] += alpha * delta * e[i];
+//	}
+	for (int iH = 0; iH < g_p.num_hidden; iH++) {
+		*pgBH(wgts, iH) += alpha * delta * gBH(e, iH);						// B->H
+		for (int iI = 0; iI < g_p.state_size; iI++) {
+			*pgIH(wgts, iI, iH) += alpha * delta * (*pgIH(e, iI, iH));		// I->H
+		}
+		*pgHO(wgts, iH) += alpha * delta * gHO(e, iH);						// H->O
 	}
+//	printf("BO wgts, before: %9.6f\n", *pgBO(wgts));
+	*pgBO(wgts) += alpha * delta * gBO(e);									// B->O
+//	printf("BO wgts, after: %9.6f\n", *pgBO(wgts));
 }
 
 // update eligibility traces using the activation values for hidden and output nodes
@@ -1196,9 +1345,17 @@ void update_trace(unsigned *state, float *wgts, float *e, float *hidden, float *
 //	printf("update_trace\n");
 //#endif
 	// first decay all existing values
-	for (int i = 0; i < g_p.num_wgts; i++) {
-		e[i] *= g_p.gamma * lambda;
+//	for (int i = 0; i < g_p.num_wgts; i++) {
+//		e[i] *= g_p.gamma * lambda;
+//	}
+	for (int iH = 0; iH < g_p.num_hidden; iH++) {
+		*pgBH(e, iH) *= g_p.gamma * lambda;				// B->H
+		for (int iI = 0; iI < g_p.state_size; iI++) {
+			*pgIH(e, iI, iH)  *= g_p.gamma * lambda;	// I->H
+		}
+		*pgHO(e, iH) *= g_p.gamma * lambda;				// H->O
 	}
+	*pgBO(e) *= g_p.gamma * lambda;						// B->O
 	
 	// next update the weights from hidden layer to output node
 	// first the bias
@@ -1206,27 +1363,27 @@ void update_trace(unsigned *state, float *wgts, float *e, float *hidden, float *
 //	printf("out[0] is %9.4f and g_prime(out) is %9.4f\n", out[0], g_prime_i);
 	unsigned iH2O = (2 * g_p.board_size + 1) * g_p.num_hidden;
 //	e[iH2O + g_p.num_hidden] += -1.0f * g_prime_i;
-	*pBO(e) += -1.0f * g_prime_i;
+	*pgBO(e) += -1.0f * g_prime_i;
 	
 	// next do all the hidden nodes to output node
 	for (int j = 0; j < g_p.num_hidden; j++) {
 //		e[iH2O + j] += hidden[j] * g_prime_i;
-		*pHO(e, j) += hidden[j] * g_prime_i;
+		*pgHO(e, j) += hidden[j] * g_prime_i;
 //		printf("hidden node %d, activation is %9.4f, increment to e is %9.4f, new e is %9.4f\n", j, hidden[j], g_prime_i*hidden[j], e[iH2O + j]);
 	}
 	
 	// now update the weights to the hidden nodes
 	for (int j = 0; j < g_p.num_hidden; j++) {
 //		float g_prime_j = hidden[j]*(1.0f - hidden[j]) * wgts[iH2O + j] * g_prime_i;
-		float g_prime_j = hidden[j]*(1.0f - hidden[j]) * HO(wgts, j) * g_prime_i;
+		float g_prime_j = hidden[j]*(1.0f - hidden[j]) * gHO(wgts, j) * g_prime_i;
 		// first the bias to the hidden node
 //		e[j] += -1.0f * g_prime_j;
-		*pBH(e, j) += -1.0f * g_prime_j;
+		*pgBH(e, j) += -1.0f * g_prime_j;
 		
 		// then all the input -> hidden values
 		for (int k = 0; k < g_p.board_size * 2; k++) {
 //			if (state[k]) e[(k+1)*g_p.num_hidden + j] += g_prime_j;
-			if (state[k]) *pIH(e, k, j) += g_prime_j;
+			if (state[k]) *pgIH(e, k, j) += g_prime_j;
 		}
 	}
 }
@@ -1258,7 +1415,7 @@ WON_LOSS compete(float *ag1_wgts, const char *name1, float *ag2_wgts, const char
 	if (RandUniform(seeds, stride) < 0.50f) {
 		SHOW printf("New game, O plays first\n");
 		SHOW dump_state(state, turn, 1);
-		(ag2_wgts	? take_action2(state, ag2_wgts, hidden, out, &terminal, ag2_hidden)
+		(ag2_wgts	? take_action(state, ag2_wgts, hidden, out, &terminal)
 					: take_random_action(state, &terminal, seeds, stride));
 		++turn;
 	}else {
@@ -1272,7 +1429,7 @@ WON_LOSS compete(float *ag1_wgts, const char *name1, float *ag2_wgts, const char
 	
 	while (game < num_games) {
 		SHOW dump_state(state, turn, 1);
-		float reward = (ag2_wgts	? take_action2(state, ag2_wgts, hidden, out, &terminal, ag2_hidden)
+		float reward = (ag2_wgts	? take_action(state, ag2_wgts, hidden, out, &terminal)
 									: take_random_action(state, &terminal, seeds, stride));
 		++turn;
 		SHOW dump_state(state, turn, 0);
@@ -1321,7 +1478,7 @@ WON_LOSS compete(float *ag1_wgts, const char *name1, float *ag2_wgts, const char
 // Run a learning session using agent ag1 against ag2.  ag2 may be NULL which represents a random player
 // Start with a random board with start_pieces per side, or the normal starting board if start_pieces is 0
 // Stop the learning after num_turns (for each player)
-WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pieces, unsigned num_turns, unsigned max_turns, unsigned ag2_hidden)
+WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pieces, unsigned num_turns, unsigned max_turns)
 {
 //	printf("auto_learning: %d pieces,  %d turns, with %d max turns per game...\n", start_pieces, num_turns, max_turns);
 
@@ -1335,9 +1492,9 @@ WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pi
 	
 	WON_LOSS wl = {0, 0, 0, 0};
 	
-#ifdef DUMP_ALL_AGENT_UPDATES
-	dump_agent(ag1, iAg, 1);
-#endif
+//#ifdef DUMP_ALL_AGENT_UPDATES
+//	dump_agent(ag1, iAg, 1);
+//#endif
 	
 	static float *hidden = NULL;
 	static float *out = NULL;
@@ -1368,7 +1525,7 @@ WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pi
 		printf("New game, O to play first...\n");
 		dump_state(state, turn, 1);		
 #endif
-		float r = (ag2_wgts	? take_action2(state, ag2_wgts, hidden, out, &terminal, ag2_hidden) 
+		float r = (ag2_wgts	? take_action(state, ag2_wgts, hidden, out, &terminal) 
 							: take_random_action(state, &terminal, seeds, g_p.board_size));
 		++turn;
 	}else {
@@ -1415,7 +1572,7 @@ WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pi
 
 		
 
-		float reward = (ag2_wgts	? take_action2(state, ag2_wgts, hidden, out, &terminal, ag2_hidden) 
+		float reward = (ag2_wgts	? take_action(state, ag2_wgts, hidden, out, &terminal) 
 									: take_random_action(state, &terminal, seeds, g_p.board_size));
 		++turn;
 #ifdef DUMP_MOVES
@@ -1506,7 +1663,9 @@ RESULTS *runCPU(AGENT *agCPU, float *champ_wgts)
 {
 	printf("running on CPU...\n");
 
+#ifdef DUMP_INITIAL_AGENTS
 	dump_agentsCPU("initial agents on CPU", agCPU, 1);
+#endif
 
 //	for (int iAg = 0; iAg < g_p.num_agents; iAg++) {
 //		auto_learn(agCPU, iAg, NULL, g_p.num_pieces, g_p.warmup_length, g_p.max_turns, 0);
@@ -1520,19 +1679,19 @@ RESULTS *runCPU(AGENT *agCPU, float *champ_wgts)
 	// lastWinner is the agent in first place after each learning session
 	unsigned lastWinner = 0;
 
-//	printf("warm-up versus RAND\n");
-////	dump_agentsCPU("prior to warmup", agCPU, 0);
-//	for (int iAg = 0; iAg < g_p.num_agents; iAg++) {
-//		unsigned save_num_pieces = g_p.num_pieces;
-//		printf("agent %d learning against RAND ... ", iAg);
-//		for (int p = 1; p <= save_num_pieces; p++) {
-//			g_p.num_pieces = p;
-//			printf(" %d ... ", p);
-//			auto_learn(agCPU, iAg, NULL, g_p.num_pieces, g_p.warmup_length, g_p.max_turns, 0);
-//		}
-//		printf(" done\n");
-//		g_p.num_pieces = save_num_pieces;
-//	}
+	printf("warm-up versus RAND\n");
+//	dump_agentsCPU("prior to warmup", agCPU, 0);
+	for (int iAg = 0; iAg < g_p.num_agents; iAg++) {
+		unsigned save_num_pieces = g_p.num_pieces;
+		printf("agent %d learning against RAND ... ", iAg);
+		for (int p = 1; p <= save_num_pieces; p++) {
+			g_p.num_pieces = p;
+			printf(" %d ... ", p);
+			auto_learn(agCPU, iAg, NULL, g_p.num_pieces, g_p.warmup_length, g_p.max_turns);
+		}
+		printf(" done\n");
+		g_p.num_pieces = save_num_pieces;
+	}
 
 	for (int iSession = 0; iSession < g_p.num_sessions; iSession++) {
 		// copy the current weights to the saved_wgts area
@@ -1551,26 +1710,26 @@ RESULTS *runCPU(AGENT *agCPU, float *champ_wgts)
 //			for (int iOp = 0; iOp < g_p.num_agents; iOp++) {
 //				unsigned xOp = (iAg + iOp) % g_p.num_agents;
 
-//			// compete against the top half of the agents from previous standings
-//			for (int iOp = 0; iOp < g_p.num_agents/((iSession > 0) ? 2 : 1); iOp++) {
-//				unsigned xOp = (iAg + iOp) % g_p.num_agents;
-//				if (iSession > 0) xOp = r->standings[(iSession-1) * g_p.num_agents + iOp].agent;
-////				printf("(%d vs %d) ", iAg, xOp);
-//				WON_LOSS wl = auto_learn(agCPU, iAg, agCPU->saved_wgts + xOp * g_p.wgts_stride, g_p.num_pieces, g_p.episode_length, g_p.max_turns, g_p.num_hidden);
-////				printf("g_p.num_hidden is %d\n", g_p.num_hidden);
-//				r->standings[iStand].games += wl.games;
-//				r->standings[iStand].wins += wl.wins;
-//				r->standings[iStand].losses += wl.losses;
-//			}
+			// compete against the top half of the agents from previous standings
+			for (int iOp = 0; iOp < g_p.num_agents/((iSession > 0) ? 2 : 1); iOp++) {
+				unsigned xOp = (iAg + iOp) % g_p.num_agents;
+				if (iSession > 0) xOp = r->standings[(iSession-1) * g_p.num_agents + iOp].agent;
+//				printf("(%d vs %d) ", iAg, xOp);
+				WON_LOSS wl = auto_learn(agCPU, iAg, agCPU->saved_wgts + xOp * g_p.wgts_stride, g_p.num_pieces, g_p.episode_length, g_p.max_turns);
+//				printf("g_p.num_hidden is %d\n", g_p.num_hidden);
+				r->standings[iStand].games += wl.games;
+				r->standings[iStand].wins += wl.wins;
+				r->standings[iStand].losses += wl.losses;
+			}
 
 			// just compete against the champ
-			WON_LOSS wl = auto_learn(agCPU, iAg, champ_wgts, g_p.num_pieces, g_p.episode_length, g_p.max_turns, g_p.num_hidden);
-			r->standings[iStand].games += wl.games;
-			r->standings[iStand].wins += wl.wins;
-			r->standings[iStand].losses += wl.losses;
+//			WON_LOSS wl = auto_learn(agCPU, iAg, champ_wgts, g_p.num_pieces, g_p.episode_length, g_p.max_turns, g_p.num_hidden);
+//			r->standings[iStand].games += wl.games;
+//			r->standings[iStand].wins += wl.wins;
+//			r->standings[iStand].losses += wl.losses;
 			
 			// compete against the champ as a benchmark
-//			r->vsChamp[iStand] = compete(agCPU->wgts + iAg * g_p.wgts_stride, NULL, champ_wgts, NULL, g_p.num_pieces, CHAMP_GAMES, g_p.max_turns, 0, g_p.num_hidden, agCPU->seeds + iAg, g_p.num_agents);
+			r->vsChamp[iStand] = compete(agCPU->wgts + iAg * g_p.wgts_stride, NULL, champ_wgts, NULL, g_p.num_pieces, CHAMP_GAMES, g_p.max_turns, 0, g_p.num_hidden, agCPU->seeds + iAg, g_p.num_agents);
 		}
 		
 		// sort and print the standings
@@ -1589,9 +1748,9 @@ RESULTS *runCPU(AGENT *agCPU, float *champ_wgts)
 //	}else {
 //		printf("CHALLENGER beat CHAMP!!!\n");
 //	}
-
+#ifdef DUMP_FINAL_AGENTS
 	dump_agentsCPU("agents on CPU, after learning", agCPU, 1);
-	
+#endif
 	r->iBest = lastWinner;
 	return r;
 }
@@ -1619,6 +1778,7 @@ __device__ unsigned rand_num(unsigned nn, unsigned *seeds, unsigned stride)
 }
 
 // count the number of pieces on a board, storing the total in s_count[0]
+// idx ranges from 0 to at least dc_half_board_size
 __device__ void count_board_pieces(unsigned idx, unsigned *s_board, unsigned *s_count)
 {
 	unsigned half = dc_half_board_size;
@@ -1636,16 +1796,16 @@ __device__ void count_board_pieces(unsigned idx, unsigned *s_board, unsigned *s_
 // Fill in the board with random pieces (uses dc_board_size and dc_num_pieces)
 //		s_board points to the board for this agent
 //		s_temp is a temporary area of size board_size/2
-//		idx is the thread number which represents the cell
+//		idx is the thread number which represents the cell, must range from 0 to (dc_board_size - 1)
 //		seeds points to 1st seed for this agent
 //		stride is the stride of seeds
 __device__ void random_board(unsigned *s_board, unsigned *s_temp, unsigned idx, unsigned *seeds, unsigned stride)
 {
-	// randomly add pieces to some cells using probability dc_piece_ratio
-	if (idx < dc_board_size && dc_piece_ratioX > RandUniform(seeds + idx, stride))
-			s_board[idx] = 1;
-	else s_board[idx] = 0;
-
+	// randomly add pieces to cells using probability dc_piece_ratio
+	if (idx < dc_board_size) {
+		if (dc_piece_ratioX > RandUniform(seeds + idx, stride)) s_board[idx] = 1;
+		else s_board[idx] = 0;
+	}
 	__syncthreads();
 	
 	// count the number of 1's
@@ -1662,6 +1822,7 @@ __device__ void random_board(unsigned *s_board, unsigned *s_temp, unsigned idx, 
 	count_board_pieces(idx, s_board, s_temp);
 	// s_temp[0] now contains the number of 1's
 	
+	// use thread 0 to add/remove pieces to get the correct total
 	if (idx == 0) {
 		unsigned r;
 		while (s_temp[0] > dc_num_pieces) {
@@ -1679,9 +1840,13 @@ __device__ void random_board(unsigned *s_board, unsigned *s_temp, unsigned idx, 
 
 __device__ void random_board_masked(unsigned *s_board, unsigned *s_mask, unsigned *s_temp, unsigned idx, unsigned *seeds, unsigned stride)
 {
-	if (idx < dc_board_size && dc_piece_ratioO > RandUniform(seeds + idx, stride) && !s_mask[idx])
-		s_board[idx] = 1;
-	else s_board[idx] = 0;
+	if (idx < dc_board_size) {
+		if (dc_piece_ratioO > RandUniform(seeds + idx, stride) && !s_mask[idx]) s_board[idx] = 1;
+		else s_board[idx] = 0;
+	}
+//	if (idx < dc_board_size && dc_piece_ratioO > RandUniform(seeds + idx, stride) && !s_mask[idx])
+//		s_board[idx] = 1;
+//	else s_board[idx] = 0;
 	__syncthreads();
 	
 	// count the number of ones
@@ -1899,17 +2064,18 @@ unsigned dynamic_shared_mem()
 RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 {
 	printf("running on GPU...\n");
+#ifdef DUMP_INITIAL_AGENTS
 	dump_agentsGPU("initial agents on GPU", agGPU, 1);
-	
+#endif
 	dim3 blockDim(g_p.board_size);
 	dim3 gridDim(g_p.num_agents);
 
 	PRE_KERNEL("learn_kernel");
 	learn_kernel<<<gridDim, blockDim, dynamic_shared_mem()>>>(agGPU->seeds, agGPU->wgts, agGPU->e, NULL);
 	POST_KERNEL(learn_kernel);
-	
+#ifdef DUMP_FINAL_AGENTS
 	dump_agentsGPU("agents after learning on GPU", agGPU, 1);
-	
+#endif
 	return NULL;
 }
 

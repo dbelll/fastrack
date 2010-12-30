@@ -6,9 +6,9 @@
 //  Copyright dbelll 2010. All rights reserved.
 //
 
-#define DUMP_MOVES
-//#define DUMP_ALL_AGENT_UPDATES
-//#define SHOW_SAMPLE_GAMES_AFTER_LEARNING 4
+
+#define GLOBAL_WGTS_FORMAT 2
+#define FILE_FORMAT 1
 
 #define MAX_BOARD_DIMENSION 8	// maximum value for width or length of board, should be power of 2
 #define MAX_BOARD_SIZE MAX_BOARD_DIMENSION * MAX_BOARD_DIMENSION
@@ -78,31 +78,33 @@ typedef struct {
 	// calculated values
 	unsigned board_size;		// board_width * board_height
 	unsigned state_size;		// 2 * board_size
-	unsigned half_board_size;	// biggest power of two less than board_size
+	unsigned half_board_size;	// biggest power of two less than board_size, used for reductions
+								// on the GPU
 	unsigned num_wgts;			// num_hidden * (2*board_size + 3) = space used for weight array
-								// this value is the stride between agent's weight blocks
-	unsigned wgts_stride;		// MAX_STATE_SIZE * (num_hidden + 2)
-	unsigned num_agent_floats;	// (3*alloc_wgts + 3) = total size of agent float data
+								// in compact format, used for shared memory
+	unsigned wgts_stride;		// MAX_STATE_SIZE * (num_hidden + 2), this value is the stride
+								// between weight blocks in the global memory layout
+	unsigned num_agent_floats;	// (3*wgts_stride + 3) = total size of agent float global data
 								// (wgts and e and  alpha, epsilon, and lambda)
 	unsigned timesteps;			// num_sessions * num_agents * episode_length
 	unsigned agent_timesteps;	// num_agents * timesteps
 	
-	const char *champ;		// name of file with champ's weights
+	const char *champ;			// name of file with champ's weights
 } PARAMS;
 
 
 // AGENT structure is used to consolidate the pointers to all agent data.  Pointers may be
 // all host pointers or all device pointers.
 typedef struct{
-	unsigned *seeds;	// random number seeds for each agent (num_agents * 4)
-	float *wgts;		// nn wgts for each agent (num_agents * num_wgts)
-	float *e;			// eligibility trace (num_agents * num_wgts)
-	float *saved_wgts;	// saved copy of weights
+	unsigned *seeds;	// random number seeds for each agent (num_agents * 4 * board_size)
+	float *wgts;		// nn wgts for each agent (num_agents * wgts_stride)
+	float *e;			// eligibility trace (num_agents * wgts_stride)
+	float *saved_wgts;	// saved copy of weights (num_agents * wgts_stride)
 	float *alpha;		// agent-specific alpha value (num_agents)
 	float *epsilon;		// agent-specific epsilon value (num_agents)
 	float *lambda;		// agent-specific lambda value (num_agents)
 	unsigned *states;		// saved state information (num_agents * state_size)
-	unsigned *next_to_play; // 0 ==> X, 1 ==> O
+	unsigned *next_to_play; // 0 ==> X, 1 ==> O (num_agents)
 } AGENT;
 
 //typedef struct {
@@ -133,6 +135,9 @@ typedef struct {
 							// the results of competing against the benchmark opponent
 	unsigned iBest;			// index number for best agent this run
 } RESULTS;
+
+unsigned calc_num_wgts(unsigned num_hidden, unsigned board_size);
+unsigned calc_wgts_stride(unsigned num_hidden, unsigned board_size);
 
 AGENT *init_agentsCPU(PARAMS p);
 AGENT *init_agentsGPU(AGENT *agCPU);

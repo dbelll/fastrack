@@ -11,6 +11,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		101E1C9E12CBC3B800F89B36 /* knight_out.agent */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = knight_out.agent; sourceTree = "<group>"; };
 		10294C5011A1A01400AAF551 /* fastrack.cu */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cuda; path = fastrack.cu; sourceTree = "<group>"; };
 		10294C5111A1A01400AAF551 /* fastrack.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = fastrack.h; sourceTree = "<group>"; };
 		10294D4211A1B49500AAF551 /* profile_config */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = profile_config; sourceTree = "<group>"; };
@@ -33,6 +34,7 @@
 		1064382012C3C9F000F6B78A /* CPUmoves */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = CPUmoves; sourceTree = "<group>"; };
 		106FF7F5119EE68B000CD6C8 /* Makefile */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.make; path = Makefile; sourceTree = "<group>"; };
 		106FF80D119EE7F5000CD6C8 /* main.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = main.c; sourceTree = "<group>"; };
+		10A540AE12CBEADB00EC0531 /* knight57n4v11.agent */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = knight57n4v11.agent; sourceTree = "<group>"; };
 		10D4729412BCD1070018A3A5 /* misc_utils.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = misc_utils.c; sourceTree = "<group>"; };
 		10D4729512BCD1070018A3A5 /* misc_utils.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = misc_utils.h; sourceTree = "<group>"; };
 		10D472C612BCDAFB0018A3A5 /* junk.csv */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = junk.csv; sourceTree = "<group>"; };
@@ -94,6 +96,8 @@
 		103C8E3212B8D33800FE2066 /* notes and results */ = {
 			isa = PBXGroup;
 			children = (
+				10A540AE12CBEADB00EC0531 /* knight57n4v11.agent */,
+				101E1C9E12CBC3B800F89B36 /* knight_out.agent */,
 				10D473F212BD57EF0018A3A5 /* temp.agent */,
 				10D473C012BD1FDD0018A3A5 /* standings.csv */,
 				103C8DA512B8197100FE2066 /* junk */,
