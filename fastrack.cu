@@ -1639,6 +1639,7 @@ WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pi
 //			reward = REWARD_TIME_LIMIT;
 //		}
 		if (terminal || (turn == max_turns)) {
+			break;
 #ifdef DUMP_MOVES
 			if (!terminal) printf("****** GAME OVER: reached maximum number of turns per game (total_turns = %d, games = %d)\n", total_turns, wl.games);
 #endif
@@ -1756,7 +1757,8 @@ RESULTS *runCPU(AGENT *agCPU, float *champ_wgts)
 //				unsigned xOp = (iAg + iOp) % g_p.num_agents;
 
 			// compete against the top half of the agents from previous standings
-			for (int iOp = 0; iOp < g_p.num_agents/((iSession > 0) ? 2 : 1); iOp++) {
+//			for (int iOp = 0; iOp < g_p.num_agents/((iSession > 0) ? 2 : 1); iOp++) {
+			for (int iOp = 0; iOp < 1; iOp++) {
 				unsigned xOp = (iAg + iOp) % g_p.num_agents;
 				if (iSession > 0) xOp = r->standings[(iSession-1) * g_p.num_agents + iOp].agent;
 				printf("\n\n>>>>> new matchup >>>>> (%d vs %d)\n", iAg, xOp);
@@ -2255,8 +2257,8 @@ __global__ void learn_kernel(unsigned *seeds, float *wgts, float *e, float *ag2_
 	
 	// copy values to shared memory
 	if (idx == 0){
-		s_lambda = dc_ag.lambda[blockIdx.x];
-		s_alpha = dc_ag.alpha[blockIdx.x];
+		s_lambda = dc_ag.lambda[iAgent];
+		s_alpha = dc_ag.alpha[iAgent];
 	}
 	__syncthreads();
 	
@@ -2270,7 +2272,7 @@ __global__ void learn_kernel(unsigned *seeds, float *wgts, float *e, float *ag2_
 	
 	copy_wgts_to_s(wgts + iAgent * dc_wgts_stride, s_wgts);
 	copy_wgts_to_s(e + iAgent * dc_wgts_stride, s_e);
-	copy_wgts_to_s(ag2_wgts, s_opwgts);
+	copy_wgts_to_s(ag2_wgts + iAgent * dc_wgts_stride, s_opwgts);
 
 	unsigned turn = 0;
 	unsigned total_turns = 0;
@@ -2294,6 +2296,7 @@ __global__ void learn_kernel(unsigned *seeds, float *wgts, float *e, float *ag2_
 	if (idx == 0) s_V = s_out[0];
 	__syncthreads();
 	
+	
 	update_traceGPU(s_state, s_wgts, s_e, s_hidden, s_out, s_lambda, s_temp);
 	
 	while (total_turns++ < dc_episode_length) {
@@ -2310,6 +2313,11 @@ __global__ void learn_kernel(unsigned *seeds, float *wgts, float *e, float *ag2_
 		__syncthreads();
 		
 		update_wgtsGPU(s_alpha, s_delta, s_wgts, s_e);
+		if (s_terminal) reset_traceGPU(s_e);
+		update_traceGPU(s_state, s_wgts, s_e, s_hidden, s_out, s_lambda, s_temp);
+
+		if (idx == 0) s_V = s_V_prime;
+		__syncthreads();
 	}
 	
 	// copy values back to global memory
