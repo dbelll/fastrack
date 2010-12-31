@@ -65,6 +65,13 @@ void dump_all_wgts(float *wgts, unsigned num_hidden);
 #pragma mark -
 #pragma mark Helpers
 
+// return a random number from 0 to nn-1
+__device__ __host__ unsigned rand_num(unsigned nn, unsigned *seeds, unsigned stride)
+{
+	unsigned r = RandUniformui(seeds, stride) % nn;
+	return r;
+}
+
 /*
 	Accessors for the wgts (and e's) 
 	There are separate accessors for global memory and shared memory.  In global memory,
@@ -338,6 +345,32 @@ void random_board(unsigned *board, unsigned n, unsigned *seeds, unsigned stride)
 	random_add(board, n, seeds, stride);
 }
 
+unsigned count_board_piecesCPU(unsigned *board)
+{
+	unsigned count = 0;
+	for (int i = 0; i < g_p.board_size; i++) if (board[i]) ++count;
+	return count;
+}
+
+// duplicate the GPU method of getting a random board
+void random_board2(unsigned *board, unsigned n, unsigned *seeds, unsigned stride)
+{
+	for (int i = 0; i < g_p.board_size; i++) {
+		if (g_p.piece_ratioX > RandUniform(seeds + i, stride)) board[i] = 1;
+		else board[i] = 0;
+	}
+	
+	unsigned count = count_board_piecesCPU(board);
+	unsigned r;
+	while (count > g_p.num_pieces) {
+		r = rand_num(g_p.board_size, seeds, stride);
+		if (board[r] == 1) { board[r] = 0; --count; }
+	}
+	while (count < g_p.num_pieces){
+		r = rand_num(g_p.board_size, seeds, stride);
+		if (board[r] == 0) {board[r] = 1; ++count; }
+	}
+}
 
 // add n pieces randomly to an existing board, avoiding any occupied cells in the mask
 void random_board_masked(unsigned *board, unsigned *mask, unsigned n, unsigned *seeds, unsigned stride)
@@ -352,11 +385,31 @@ void random_board_masked(unsigned *board, unsigned *mask, unsigned n, unsigned *
 	for (int i = 0; i < g_p.board_size; i++) board[i] ^= mask[i];
 }
 
+void random_board_masked2(unsigned *board, unsigned *mask, unsigned n, unsigned *seeds, unsigned stride)
+{
+	for (int i = 0; i < g_p.board_size; i++) {
+		if (g_p.piece_ratioO > RandUniform(seeds + i, stride) && !mask[i]) board[i] = 1;
+		else board[i] = 0;
+	}
+	unsigned count = count_board_piecesCPU(board);
+	unsigned r;
+	while (count > g_p.num_pieces) {
+		r = rand_num(g_p.board_size, seeds, stride);
+		if (board[r] == 1) { board[r] = 0; --count; }
+	}
+	while (count < g_p.num_pieces) {
+		r = rand_num(g_p.board_size, seeds, stride);
+		if (board[r] == 0 && mask[r] == 0) { board[r] = 1; ++count; }
+	}
+}
+
 // generate a random state with n pieces for ech player
 void random_state(unsigned *state, unsigned n, unsigned *seeds, unsigned stride)
 {
-	random_board(X_BOARD(state), n, seeds, stride);
-	random_board_masked(O_BOARD(state), X_BOARD(state), n, seeds, stride);
+//	random_board(X_BOARD(state), n, seeds, stride);
+//	random_board_masked(O_BOARD(state), X_BOARD(state), n, seeds, stride);
+	random_board2(X_BOARD(state), n, seeds, stride);
+	random_board_masked2(O_BOARD(state), X_BOARD(state), n, seeds, stride);
 }
 
 
@@ -1639,7 +1692,7 @@ WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pi
 //			reward = REWARD_TIME_LIMIT;
 //		}
 		if (terminal || (turn == max_turns)) {
-			break;
+//			break;
 #ifdef DUMP_MOVES
 			if (!terminal) printf("****** GAME OVER: reached maximum number of turns per game (total_turns = %d, games = %d)\n", total_turns, wl.games);
 #endif
@@ -1649,8 +1702,10 @@ WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pi
 				printf("\n--------------- game %d ---------------------\n", wl.games);
 #endif
 				turn = 0;
+				float r = RandUniform(seeds, g_p.board_size);	// ordering of random number generation
+																// is consistent with GPU
 				set_start_state(state, start_pieces, seeds, g_p.board_size);
-				if (RandUniform(seeds, g_p.board_size) < 0.50f) {
+				if (r < 0.50f) {
 #ifdef DUMP_MOVES
 					printf("New game, O to play first...\n");
 					dump_state(state, turn, 1);		
@@ -1668,6 +1723,7 @@ WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pi
 				dump_state(state, turn, 0);		
 #endif
 //			}
+			break;
 		}
 //		printf("choosing next move...\n");
 		float V_prime = choose_move(state, ag1_wgts, hidden, out);
@@ -1808,23 +1864,12 @@ RESULTS *runCPU(AGENT *agCPU, float *champ_wgts)
 #pragma mark -
 #pragma mark GPU - Only
 
-// return a random number from 0 to n-1
-__device__ unsigned rand_num(unsigned nn, unsigned *seeds, unsigned stride)
-{
-//	unsigned r = n;
-//	
-//	// mask1 masks off the bits that are needed for a number from [0 to n-1]
-//	unsigned mask = 1;
-//	while (mask < n) {
-//		mask <<= 1;
-//	}
-//	mask -= 1;
-//	do {
-//		r = RandUniformui(seeds, stride) & mask;
-//	} while (r >= n);
-	unsigned r = RandUniformui(seeds, stride) % nn;
-	return r;
-}
+// return a random number from 0 to nn-1
+//__device__ __host__ unsigned rand_num(unsigned nn, unsigned *seeds, unsigned stride)
+//{
+//	unsigned r = RandUniformui(seeds, stride) % nn;
+//	return r;
+//}
 
 // count the number of pieces on a board, storing the total in s_count[0]
 // idx ranges from 0 to at least dc_half_board_size
@@ -2243,6 +2288,9 @@ __global__ void learn_kernel(unsigned *seeds, float *wgts, float *e, float *ag2_
 	__shared__ float s_delta;
 	__shared__ unsigned s_terminal;
 	__shared__ unsigned s_ui;
+	__shared__ unsigned s_games;
+	__shared__ unsigned s_wins;
+	__shared__ unsigned s_losses;
 
 	// dynamic shared memory
 	extern __shared__ unsigned s_seeds[];						// 4 * dc_board_size
@@ -2303,6 +2351,22 @@ __global__ void learn_kernel(unsigned *seeds, float *wgts, float *e, float *ag2_
 		take_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_terminal, s_ophidden, &s_reward);
 		++turn;
 		if (s_terminal || (turn == dc_max_turns)) {
+//			break;
+			if (idx == 0) {
+				++s_games;
+				turn = 0;
+				if (s_terminal){
+					if (s_reward > 0.50f) ++s_wins;
+					else ++s_losses;
+				}
+				s_rand = RandUniform(s_seeds, dc_board_size);
+			}
+			__syncthreads();			
+			random_stateGPU(s_state, s_temp, s_seeds, dc_board_size);
+			if (s_rand < 0.50f) {
+				take_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_terminal, s_ophidden, &s_reward);
+				++turn;
+			}
 			break;
 		}
 		choose_moveGPU(s_state, s_temp, s_wgts, s_hidden, s_out, &s_terminal, &s_reward);

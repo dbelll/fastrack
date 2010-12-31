@@ -85,6 +85,9 @@ typedef struct {
 	unsigned half_board_size;	// biggest power of two less than board_size, used for reductions
 								// on the GPU
 	unsigned half_hidden;
+	float piece_ratioX;			// num_pieces / board_size
+	float piece_ratioO;			// num_pieces / (board_size - num_pieces)
+
 	unsigned num_wgts;			// num_hidden * (2*board_size + 3) = space used for weight array
 								// in compact format, used for shared memory
 	unsigned wgts_stride;		// MAX_STATE_SIZE * (num_hidden + 2), this value is the stride
