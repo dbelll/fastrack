@@ -255,7 +255,7 @@ float val_for_state(float *wgts, unsigned *state, float *hidden, float *out)
 	unsigned terminal;
 	float r = reward(state, &terminal);
 	if (terminal){
-		printf("val_for_state called on terminal state, about to bail with reward = %f\n", r);
+//		printf("val_for_state called on terminal state, about to bail with reward = %f\n", r);
 		return r;
 	}
 
@@ -1606,6 +1606,7 @@ WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pi
 	unsigned turn = 0;			// turn is incremented after player O moves
 	unsigned total_turns = 0;
 	unsigned terminal = 0;
+	unsigned new_terminal = 0;
 	
 	// set up the starting state
 	// already set in initialization on CPU
@@ -1653,7 +1654,7 @@ WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pi
 	
 	// loop over the number of turns
 
-	printf("turn is %d, total completed turns is %d\n", turn, total_turns);
+//	printf("turn is %d, total completed turns is %d\n", turn, total_turns);
 
 	while (total_turns++ < num_turns) {
 
@@ -1726,7 +1727,7 @@ WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pi
 					printf("New game, O to play first...\n");
 					dump_state(state, turn, 1);		
 #endif
-					(ag2_wgts	? take_action(state, ag2_wgts, hidden, out, &terminal) 
+					(ag2_wgts	? take_action(state, ag2_wgts, hidden, out, &new_terminal) 
 								: take_random_action(state, &terminal, seeds, g_p.num_agents));
 					++turn;
 				}else {
@@ -1785,7 +1786,7 @@ WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pi
 #endif
 		
 		V = V_prime;
-		printf("turn is %d, total_turns is %d\n", turn, total_turns);
+//		printf("turn is %d, total_turns is %d\n", turn, total_turns);
 	}
 //	printf("learning over...  ");
 //	printf("W:%7d  L:%7d  D:%7d\n", wl.wins, wl.losses, wl.games - wl.wins - wl.losses);
@@ -1853,10 +1854,12 @@ RESULTS *runCPU(AGENT *agCPU, float *champ_wgts)
 
 			// compete against the top half of the agents from previous standings
 //			for (int iOp = 0; iOp < g_p.num_agents/((iSession > 0) ? 2 : 1); iOp++) {
-			for (int iOp = 0; iOp < 1; iOp++) {
+			for (int iOp = 0; iOp < 1; iOp++) {		// for debugging, just run vs. one opponent
 				unsigned xOp = (iAg + iOp) % g_p.num_agents;
 				if (iSession > 0) xOp = r->standings[(iSession-1) * g_p.num_agents + iOp].agent;
-				printf("\n\n>>>>> new matchup >>>>> (%d vs %d)\n", iAg, xOp);
+
+//				printf("\n\n>>>>> new matchup >>>>> (%d vs %d)\n", iAg, xOp);
+
 				WON_LOSS wl = auto_learn(agCPU, iAg, agCPU->saved_wgts + xOp * g_p.wgts_stride, g_p.num_pieces, g_p.episode_length, g_p.max_turns);
 //				printf("g_p.num_hidden is %d\n", g_p.num_hidden);
 				r->standings[iStand].games += wl.games;
@@ -2422,7 +2425,7 @@ __global__ void learn_kernel(unsigned *seeds, float *wgts, float *e, float *ag2_
 //			break;	// exit 6
 
 			if (s_rand < 0.50f) {
-				take_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_terminal, s_ophidden, &s_tempf);
+				take_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_tempui, s_ophidden, &s_tempf);
 				++turn;
 			}
 
