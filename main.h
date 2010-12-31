@@ -13,6 +13,10 @@
 	#define the value to enable it's corresponding output
 */
 
+//#define NO_OUTPUT						// define this symbol to turn off all debugging output
+
+#ifndef NO_OUTPUT
+
 #define VERBOSE
 
 #define DUMP_MOVES
@@ -25,3 +29,5 @@
 //#define DUMP_CHAMP_WGTS
 
 //#define AGENT_DUMP_BOARD_ONLY
+
+#endif

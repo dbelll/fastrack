@@ -196,6 +196,12 @@ void PRINT_TIME(float time, char *message);
 
 #endif
 
+#define THRD0_START if (threadIdx.x == 0) {
+
+#define THRD0_END	}					\
+					__syncthreads();
+
+
 
 
 #endif

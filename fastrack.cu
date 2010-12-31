@@ -254,7 +254,10 @@ float val_for_state(float *wgts, unsigned *state, float *hidden, float *out)
 //	printf("calculating value for state...\n");
 	unsigned terminal;
 	float r = reward(state, &terminal);
-	if (terminal) return r;
+	if (terminal){
+		printf("val_for_state called on terminal state, about to bail with reward = %f\n", r);
+		return r;
+	}
 
 	out[0] = 0.0f;
 	
@@ -1169,8 +1172,8 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 	
 	int *d_g_moves = device_copyi(g_moves, g_p.board_size * MAX_MOVES);
 	
-	host_dumpi("g_moves", g_moves, MAX_MOVES, g_p.board_size);
-	device_dumpi("d_moves", d_g_moves, MAX_MOVES, g_p.board_size);
+//	host_dumpi("g_moves", g_moves, MAX_MOVES, g_p.board_size);
+//	device_dumpi("d_moves", d_g_moves, MAX_MOVES, g_p.board_size);
 	
 	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_moves", &d_g_moves, sizeof(int *)));
 	
@@ -1600,7 +1603,7 @@ WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pi
 	unsigned *state = ag1->states + iAg * g_p.state_size;
 	unsigned *seeds = ag1->seeds + iAg * g_p.board_size * 4;
 	
-	unsigned turn = 0;
+	unsigned turn = 0;			// turn is incremented after player O moves
 	unsigned total_turns = 0;
 	unsigned terminal = 0;
 	
@@ -1634,12 +1637,14 @@ WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pi
 	dump_state(state, turn, 0);		
 #endif
 
-//	return wl;
+//	return wl;		// exit 0
 
 	// choose the action, storing the next state in agCPU->state and returning the value for the next state
 	float V = choose_move(state, ag1_wgts, hidden, out);
-	
+
 	update_trace(state, ag1_wgts, ag1_e, hidden, out, ag1->lambda[iAg]);
+
+//	return wl;		// exit 1
 
 #ifdef DUMP_ALL_AGENT_UPDATES
 	printf("after updating trace...\n");
@@ -1647,6 +1652,9 @@ WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pi
 #endif
 	
 	// loop over the number of turns
+
+	printf("turn is %d, total completed turns is %d\n", turn, total_turns);
+
 	while (total_turns++ < num_turns) {
 
 #ifdef DUMP_MOVES
@@ -1671,6 +1679,9 @@ WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pi
 		float reward = (ag2_wgts	? take_action(state, ag2_wgts, hidden, out, &terminal) 
 									: take_random_action(state, &terminal, seeds, g_p.board_size));
 		++turn;
+		
+//		break;	// exit 2;
+		
 #ifdef DUMP_MOVES
 		dump_state(state, turn, 0);		
 #endif
@@ -1691,10 +1702,12 @@ WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pi
 //			terminal = 1;
 //			reward = REWARD_TIME_LIMIT;
 //		}
-		if (terminal || (turn == max_turns)) {
-//			break;
+		if (terminal || (turn >= max_turns)) {
+
+//			break;	// exit 5
+
 #ifdef DUMP_MOVES
-			if (!terminal) printf("****** GAME OVER: reached maximum number of turns per game (total_turns = %d, games = %d)\n", total_turns, wl.games);
+			if (!terminal) printf("****** GAME OVER: reached maximum number of turns per game (turn = %d, total_turns = %d, games = %d)\n", turn, total_turns, wl.games);
 #endif
 			++wl.games;
 //			if (++wl.games < num_turns) {
@@ -1705,6 +1718,9 @@ WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pi
 				float r = RandUniform(seeds, g_p.board_size);	// ordering of random number generation
 																// is consistent with GPU
 				set_start_state(state, start_pieces, seeds, g_p.board_size);
+				
+//				break;	// exit 6
+				
 				if (r < 0.50f) {
 #ifdef DUMP_MOVES
 					printf("New game, O to play first...\n");
@@ -1723,11 +1739,25 @@ WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pi
 				dump_state(state, turn, 0);		
 #endif
 //			}
-			break;
+
+//			break;	// exit 7
+
 		}
 //		printf("choosing next move...\n");
 		float V_prime = choose_move(state, ag1_wgts, hidden, out);
+
+//		if (wl.games > 0) break;	// exit 8
+
 		float delta = reward + (terminal ? 0.0f : (g_p.gamma * V_prime)) - V;
+
+//		ag1->epsilon[iAg] = reward;	// stash delta in epsilon for debugging
+//		break;	// exit 3
+
+//		if (wl.games > 0){
+//			ag1->epsilon[iAg] = delta;
+//			break;					// exit 9
+//		}
+
 //		printf("updating wgts...\n");
 		update_wgts(ag1->alpha[iAg], delta, ag1_wgts, ag1_e);
 
@@ -1741,12 +1771,21 @@ WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pi
 //		printf("updating trace...\n");
 		update_trace(state, ag1_wgts, ag1_e, hidden, out, ag1->lambda[iAg]);
 
+//		ag1->epsilon[iAg] = reward;	// stash delta in epsilon for debugging
+//		break;	// exit 4
+
+//		if (wl.games > 0){
+//			ag1->epsilon[iAg] = delta;
+//			break;					// exit 10
+//		}
+
 #ifdef DUMP_ALL_AGENT_UPDATES
 		printf("after updating trace:\n");
 		dump_agent(ag1, iAg, 1);
 #endif
 		
 		V = V_prime;
+		printf("turn is %d, total_turns is %d\n", turn, total_turns);
 	}
 //	printf("learning over...  ");
 //	printf("W:%7d  L:%7d  D:%7d\n", wl.wins, wl.losses, wl.games - wl.wins - wl.losses);
@@ -2038,16 +2077,16 @@ __device__ void random_stateGPU(unsigned *s_state, float *s_temp, unsigned *s_se
 __device__ void rewardGPU(unsigned *s_state, unsigned *s_temp, unsigned *ps_terminal, float *ps_reward)
 {
 	unsigned idx = threadIdx.x;
-	if (idx == 0) *ps_terminal = 0;
+	if (idx == 0){ *ps_terminal = 0; *ps_reward = 0.0f; }
 	__syncthreads();
 	
-	count_board_pieces(idx, s_state, s_temp);
+	count_board_pieces(idx, O_BOARDGPU(s_state), s_temp);
 	if (idx == 0 && 0 == s_temp[0]) {
 		*ps_terminal = 1;
 		*ps_reward = REWARD_WIN;
 	}
 	__syncthreads();
-	count_board_pieces(idx, s_state + dc_board_size, s_temp);
+	count_board_pieces(idx, X_BOARDGPU(s_state), s_temp);
 	if (idx == 0 && 0 == s_temp[0]) {
 		*ps_terminal = 1;
 		*ps_reward = REWARD_LOSS;
@@ -2057,10 +2096,14 @@ __device__ void rewardGPU(unsigned *s_state, unsigned *s_temp, unsigned *ps_term
 }
 
 // Calcualte the value for a state s using the specified weights,
-// storing hidden activation in the specified location and returning the output value
-__device__ void val_for_stateGPU(float *s_wgts, unsigned *s_state, float *s_hidden, float *s_out, float *s_temp)
+// storing hidden activation in the specified location and stroing output value in *ps_V
+__device__ void val_for_stateGPU(float *s_wgts, unsigned *s_state, float *s_hidden, float *s_out, float *s_temp, unsigned *ps_terminal, float *ps_V)
 {
 	unsigned idx = threadIdx.x;
+
+	// first check for terminal condition, returning reward if is terminal
+	rewardGPU(s_state, (unsigned *)s_temp, ps_terminal, ps_V);
+	if(*ps_terminal) return;
 	
 	// repeat for each hidden node...
 	for (int iH = 0; iH < dc_num_hidden; iH++) {
@@ -2089,6 +2132,7 @@ __device__ void val_for_stateGPU(float *s_wgts, unsigned *s_state, float *s_hidd
 		// add in the bias to the output, then apply sigmoid
 		s_out[0] += -1.0f * S_BO(s_wgts)[0];
 		s_out[0] = sigmoid(s_out[0]);
+		*ps_V = s_out[0];
 	}
 	__syncthreads();
 }
@@ -2154,18 +2198,20 @@ __device__ void switch_sidesGPU(unsigned *s_state)
 	s_state[idx + dc_board_size] = temp;
 }
 
-__device__ void choose_moveGPU(unsigned *s_state, float *s_temp, float *s_wgts, float *s_hidden, float *s_out, unsigned *ps_terminal, float *ps_reward)
+__device__ void choose_moveGPU(unsigned *s_state, float *s_temp, float *s_wgts, float *s_hidden, float *s_out, unsigned *ps_terminal, float *ps_V)
 {
 	unsigned idx = threadIdx.x;
 	
 	// first see if the current board is terminal state
-	unsigned terminal;
+//	unsigned terminal;
 	unsigned noVal = 1;
 	float bestVal;
 	unsigned iBestFrom;
 	unsigned iBestTo;
-	float reward;
-	rewardGPU(s_state, (unsigned *)s_temp, ps_terminal, ps_reward);
+//	float reward;
+
+	// check for terminal condition
+	rewardGPU(s_state, (unsigned *)s_temp, ps_terminal, ps_V);
 	if (*ps_terminal) return;
 	
 	for (int iFrom = 0; iFrom < dc_board_size; iFrom++) {
@@ -2183,14 +2229,14 @@ __device__ void choose_moveGPU(unsigned *s_state, float *s_temp, float *s_wgts, 
 					}
 					__syncthreads();
 					
-					val_for_stateGPU(s_wgts, s_state, s_hidden, s_out, s_temp);
+					val_for_stateGPU(s_wgts, s_state, s_hidden, s_out, s_temp, ps_terminal, ps_V);
 					
 					if (idx == 0) {
-						if (noVal || s_out[0] > bestVal) {
+						if (noVal || *ps_V > bestVal) {
 							// record the best move so far
 							iBestFrom = iFrom;
 							iBestTo = iTo;
-							bestVal = s_out[0];
+							bestVal = *ps_V;
 							noVal = 0;
 						}
 						// restore the state
@@ -2212,7 +2258,7 @@ __device__ void choose_moveGPU(unsigned *s_state, float *s_temp, float *s_wgts, 
 	}
 	__syncthreads();
 	
-	val_for_stateGPU(s_wgts, s_state, s_hidden, s_out, s_temp);
+	val_for_stateGPU(s_wgts, s_state, s_hidden, s_out, s_temp, ps_terminal, ps_V);
 }
 
 __device__ void take_actionGPU(unsigned *s_state, float *s_temp, float *s_owgts, float *s_hidden, float *s_out, unsigned *ps_terminal, float *s_ophidden, float *ps_reward)
@@ -2287,10 +2333,11 @@ __global__ void learn_kernel(unsigned *seeds, float *wgts, float *e, float *ag2_
 	__shared__ float s_V_prime;
 	__shared__ float s_delta;
 	__shared__ unsigned s_terminal;
-	__shared__ unsigned s_ui;
 	__shared__ unsigned s_games;
 	__shared__ unsigned s_wins;
 	__shared__ unsigned s_losses;
+	__shared__ unsigned s_tempui;
+	__shared__ float s_tempf;
 
 	// dynamic shared memory
 	extern __shared__ unsigned s_seeds[];						// 4 * dc_board_size
@@ -2307,6 +2354,9 @@ __global__ void learn_kernel(unsigned *seeds, float *wgts, float *e, float *ag2_
 	if (idx == 0){
 		s_lambda = dc_ag.lambda[iAgent];
 		s_alpha = dc_ag.alpha[iAgent];
+		s_games = 0;
+		s_wins = 0;
+		s_losses = 0;
 	}
 	__syncthreads();
 	
@@ -2339,22 +2389,27 @@ __global__ void learn_kernel(unsigned *seeds, float *wgts, float *e, float *ag2_
 	}
 	__syncthreads();
 	
-	choose_moveGPU(s_state, s_temp, s_wgts, s_hidden, s_out, &s_terminal, &s_reward);
+	// exit 0
 
-	if (idx == 0) s_V = s_out[0];
-	__syncthreads();
-	
+	choose_moveGPU(s_state, s_temp, s_wgts, s_hidden, s_out, &s_tempui, &s_V);
 	
 	update_traceGPU(s_state, s_wgts, s_e, s_hidden, s_out, s_lambda, s_temp);
+	
+	// exit 1
 	
 	while (total_turns++ < dc_episode_length) {
 		take_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_terminal, s_ophidden, &s_reward);
 		++turn;
+		
+//		break;	// exit 2
+		
 		if (s_terminal || (turn == dc_max_turns)) {
-//			break;
+
+//			break;	// exit 5
+
+			turn = 0;
 			if (idx == 0) {
 				++s_games;
-				turn = 0;
 				if (s_terminal){
 					if (s_reward > 0.50f) ++s_wins;
 					else ++s_losses;
@@ -2363,22 +2418,46 @@ __global__ void learn_kernel(unsigned *seeds, float *wgts, float *e, float *ag2_
 			}
 			__syncthreads();			
 			random_stateGPU(s_state, s_temp, s_seeds, dc_board_size);
+
+//			break;	// exit 6
+
 			if (s_rand < 0.50f) {
-				take_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_terminal, s_ophidden, &s_reward);
+				take_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_terminal, s_ophidden, &s_tempf);
 				++turn;
 			}
-			break;
+
+//			break;	// exit 7
+
 		}
-		choose_moveGPU(s_state, s_temp, s_wgts, s_hidden, s_out, &s_terminal, &s_reward);
+		
+		choose_moveGPU(s_state, s_temp, s_wgts, s_hidden, s_out, &s_tempui, &s_V_prime);
+
+//		if (s_games > 0) break;	// exit 8
+
 		if (idx == 0){
-			s_V_prime = s_out[0];
 			s_delta = s_reward + (s_terminal ? 0.0f : (dc_gamma * s_V_prime)) - s_V;
 		}
 		__syncthreads();
 		
+//		dc_ag.epsilon[iAgent] = s_reward;	// stach the delta value in agent's epsilon for debugging
+//		break;	// exit 3
+
+//		if (s_games > 0){
+//			dc_ag.epsilon[iAgent] = s_delta;
+//			break;					// exit 9
+//		}
+
 		update_wgtsGPU(s_alpha, s_delta, s_wgts, s_e);
 		if (s_terminal) reset_traceGPU(s_e);
 		update_traceGPU(s_state, s_wgts, s_e, s_hidden, s_out, s_lambda, s_temp);
+
+//		dc_ag.epsilon[iAgent] = s_reward;	// stach the delta value in agent's epsilon for debugging
+//		break;	// exit 4
+		
+//		if (s_games > 0){
+//			dc_ag.epsilon[iAgent] = s_delta;
+//			break;					// exit 10
+//		}
 
 		if (idx == 0) s_V = s_V_prime;
 		__syncthreads();
