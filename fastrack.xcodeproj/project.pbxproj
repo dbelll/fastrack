@@ -41,6 +41,9 @@
 		10D472DD12BCDD110018A3A5 /* cuda_rand.cu */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cuda; path = cuda_rand.cu; sourceTree = "<group>"; };
 		10D473C012BD1FDD0018A3A5 /* standings.csv */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = standings.csv; sourceTree = "<group>"; };
 		10D473F212BD57EF0018A3A5 /* temp.agent */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = temp.agent; sourceTree = "<group>"; };
+		10E6B46712CF65B000674B57 /* dc_memory.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = dc_memory.h; sourceTree = "<group>"; };
+		10E6B4A412CF6CE800674B57 /* wgt_pointers.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = wgt_pointers.h; sourceTree = "<group>"; };
+		10E6B4A712CF6DB100674B57 /* prototypes.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = prototypes.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -57,6 +60,9 @@
 		10294D9B11A1B93300AAF551 /* source */ = {
 			isa = PBXGroup;
 			children = (
+				10E6B4A712CF6DB100674B57 /* prototypes.h */,
+				10E6B46712CF65B000674B57 /* dc_memory.h */,
+				10E6B4A412CF6CE800674B57 /* wgt_pointers.h */,
 				103C8AE912B6877200FE2066 /* main.h */,
 				106FF80D119EE7F5000CD6C8 /* main.c */,
 				103C920212BB0A4400FE2066 /* play.h */,
