@@ -563,7 +563,7 @@ float random_move(unsigned *state, unsigned *seeds, unsigned stride)
 		}
 	}
 	
-	unsigned r = move_count * RandUniform(seeds, stride);
+	unsigned r = (unsigned) (move_count * RandUniform(seeds, stride));
 	unsigned iRandFrom = possible_moves[r*2];
 	unsigned iRandTo = possible_moves[r*2 + 1];
 	// do the random move and return the value
