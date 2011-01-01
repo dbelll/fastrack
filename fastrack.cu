@@ -1831,12 +1831,22 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 #ifdef DUMP_INITIAL_AGENTS
 	dump_agentsGPU("initial agents on GPU", agGPU, 1);
 #endif
+
+	// setup timers
+	unsigned gpuTimer;
+	CREATE_TIMER(&gpuTimer);
+	START_TIMER(gpuTimer);
+	
 	dim3 blockDim(g_p.board_size);
 	dim3 gridDim(g_p.num_agents);
 
 	PRE_KERNEL("learn_kernel");
 	learn_kernel<<<gridDim, blockDim, dynamic_shared_mem()>>>(agGPU->seeds, agGPU->wgts, agGPU->e, agGPU->wgts);
 	POST_KERNEL(learn_kernel);
+	
+	cudaThreadSynchronize();
+	STOP_TIMER(gpuTimer, "GPU total time");
+	
 #ifdef DUMP_FINAL_AGENTS_GPU
 	dump_agentsGPU("agents after learning on GPU", agGPU, 1);
 #endif
