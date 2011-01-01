@@ -3,7 +3,7 @@
 #
 #   no arguments
 #
-_location="./bin/linux/release"
+_location="./bin/darwin/release"
 _setup="--SEED=1001 --BOARD_SIZE=5007 --NUM_PIECES=5 --MAX_TURNS=20"
 _agent="--NUM_HIDDEN=4 --NUM_AGENTS=4"
 _learn="--NUM_SESSIONS=1 --EPISODE_LENGTH=2000 --WARMUP_LENGTH=0 --BENCHMARK_GAMES=0"
