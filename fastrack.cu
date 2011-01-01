@@ -917,7 +917,7 @@ WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pi
 	
 	// set up the starting state
 	// already set in initialization on CPU
-//	set_start_state(state, start_pieces, seeds, g_p.board_size);
+	set_start_state(state, start_pieces, seeds, g_p.board_size);
 
 //	return wl;
 	
@@ -925,8 +925,8 @@ WON_LOSS auto_learn(AGENT *ag1, unsigned iAg, float *ag2_wgts, unsigned start_pi
 	printf("--------------- game %d ---------------------\n", wl.games);
 #endif
 
-//	if (RandUniform(seeds, g_p.board_size) < 0.50f) {
-	if (ag1->next_to_play[iAg]) {
+	if (RandUniform(seeds, g_p.board_size) < 0.50f) {
+//	if (ag1->next_to_play[iAg]) {
 
 #ifdef DUMP_MOVES
 		printf("New game, O to play first...\n");
@@ -1621,6 +1621,7 @@ __device__ void choose_moveGPU(unsigned *s_state, float *s_temp, float *s_wgts, 
 	val_for_stateGPU(s_wgts, s_state, s_hidden, s_out, s_temp, ps_terminal, ps_V);
 }
 
+
 /*
 	Player O makes a move based on the highest resulting board value from O's perspective.
 	X and O sides of the state are switched and then choose_moveGPU is used to select the move
@@ -1638,6 +1639,90 @@ __device__ void take_actionGPU(unsigned *s_state, float *s_temp, float *s_owgts,
 		rewardGPU(s_state, (unsigned *)s_temp, ps_terminal, ps_reward);
 	}
 	__syncthreads();
+}
+
+
+__global__ void compete_kernel(unsigned *seeds, float *wgts, float *opwgts)
+{
+	unsigned idx = threadIdx.x;
+	unsigned iAgent = blockIdx.x;
+	
+	__shared__ float s_rand;
+	__shared__ float s_reward;
+	__shared__ unsigned s_terminal;
+	__shared__ unsigned s_games;
+	__shared__ unsigned s_wins;
+	__shared__ unsigned s_losses;
+	__shared__ unsigned s_tempui;
+	__shared__ float s_tempf;
+	
+	// dynamic shared memory
+	extern __shared__ unsigned s_seeds[];				// 4 * dc_board_size
+	unsigned *s_state = s_seeds + 4 * dc_board_size;	// dc_state_size
+	float *s_temp = (float *)(s_state + dc_state_size);	// dc_board_size
+	float *s_hidden = s_temp + dc_board_size;			// dc_num_hidden
+	float *s_out = s_hidden + dc_num_hidden;			// dc_num_hidden
+	float *s_ophidden = s_out + dc_num_hidden;			// dc_num_hidden
+	float *s_wgts = s_ophidden + dc_num_hidden;			// dc_num_wgts
+	float *s_opwgts = s_wgts + dc_num_wgts;				// dc_num_wgts
+	
+	// copy values to shared memory and initialize
+	if (idx == 0) {
+		s_games = 0;
+		s_wins = 0;
+		s_losses = 0;
+	}
+	__syncthreads();
+	
+	s_seeds[idx] = seeds[iAgent * 4 * dc_board_size + idx];
+	s_seeds[idx + dc_board_size] = seeds[iAgent * 4 * dc_board_size + idx + dc_board_size];
+	s_seeds[idx + 2*dc_board_size] = seeds[iAgent * 4 * dc_board_size + idx + 2*dc_board_size];
+	s_seeds[idx + 3*dc_board_size] = seeds[iAgent * 4 * dc_board_size + idx + 3*dc_board_size];
+	
+	copy_wgts_to_s(wgts + iAgent * dc_wgts_stride, s_wgts);
+	copy_wgts_to_s(opwgts + iAgent * dc_wgts_stride, s_opwgts);
+
+	unsigned turn = 0;
+
+	// set up initial random state
+	random_stateGPU(s_state, s_temp, s_seeds, dc_board_size);
+
+	if (idx == 0){
+		s_rand = RandUniform(s_seeds, dc_board_size);
+		s_reward = 0.0f;
+	}
+	__syncthreads();
+
+	if (s_rand < 0.50f){
+		take_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_terminal, s_ophidden, &s_reward);
+		++turn;
+	}
+	__syncthreads();
+	choose_moveGPU(s_state, s_temp, s_wgts, s_hidden, s_out, &s_tempui, &s_tempf);
+	
+	while (s_games < dc_benchmark_games) {
+		take_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_terminal, s_ophidden, &s_reward);
+		++turn;
+		
+		if (s_terminal || turn == dc_max_turns) {
+			turn = 0;
+			if (idx == 0) {
+				++s_games;
+				if (s_terminal) {
+					if (s_reward > 0.50f) ++s_wins;
+					else ++s_losses;
+				}
+				s_rand = RandUniform(s_seeds, dc_board_size);
+			}
+			__syncthreads();
+			random_stateGPU(s_state, s_temp, s_seeds, dc_board_size);
+			if (s_rand < 0.50f) {
+				take_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_tempui, s_ophidden, &s_tempf);
+				++turn;
+			}
+		}
+		choose_moveGPU(s_state, s_temp, s_wgts, s_hidden, s_out, &s_tempui, &s_tempf);
+	}
 }
 
 
@@ -1692,8 +1777,8 @@ __global__ void learn_kernel(unsigned *seeds, float *wgts, float *e, float *ag2_
 	}
 	__syncthreads();
 	
-	s_state[idx] = dc_ag.states[iAgent * dc_state_size + idx];
-	s_state[idx + dc_board_size] = dc_ag.states[iAgent * dc_state_size +idx + dc_board_size];
+//	s_state[idx] = dc_ag.states[iAgent * dc_state_size + idx];
+//	s_state[idx + dc_board_size] = dc_ag.states[iAgent * dc_state_size +idx + dc_board_size];
 	
 	s_seeds[idx] = seeds[iAgent * 4 * dc_board_size + idx];
 	s_seeds[idx + dc_board_size] = seeds[iAgent * 4 * dc_board_size + idx + dc_board_size];
@@ -1708,14 +1793,16 @@ __global__ void learn_kernel(unsigned *seeds, float *wgts, float *e, float *ag2_
 	unsigned total_turns = 0;
 	
 	// skip this for testing so agent starts with the same initial state as CPU
-//	random_stateGPU(s_state, s_temp, s_seeds, dc_board_size);
+	random_stateGPU(s_state, s_temp, s_seeds, dc_board_size);
 
-//	if (idx == 0) s_rand = RandUniform(s_seeds, dc_board_size);
-//	__syncthreads();
+	if (idx == 0){
+		s_rand = RandUniform(s_seeds, dc_board_size);
+		s_reward = 0.0f;
+	}
+	__syncthreads();
 
-	
-	s_reward = 0.0f;
-	if (dc_ag.next_to_play[iAgent]) {
+//	if (dc_ag.next_to_play[iAgent]) {
+	if (s_rand < 0.50f){
 		take_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_terminal, s_ophidden, &s_reward);
 		++turn;
 	}
@@ -1832,10 +1919,15 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 	dump_agentsGPU("initial agents on GPU", agGPU, 1);
 #endif
 
+	// copy champ_wgts to device
+	float *d_champ_wgts = device_copyf(champ_wgts, g_p.wgts_stride);
+	
 	// setup timers
-	unsigned gpuTimer;
-	CREATE_TIMER(&gpuTimer);
-	START_TIMER(gpuTimer);
+	unsigned gpuLearnTimer;
+	unsigned gpuCompeteTimer;
+	CREATE_TIMER(&gpuLearnTimer);
+	CREATE_TIMER(&gpuCompeteTimer);
+	START_TIMER(gpuLearnTimer);
 	
 	dim3 blockDim(g_p.board_size);
 	dim3 gridDim(g_p.num_agents);
@@ -1845,11 +1937,21 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 	POST_KERNEL(learn_kernel);
 	
 	cudaThreadSynchronize();
-	STOP_TIMER(gpuTimer, "GPU total time");
+	STOP_TIMER(gpuLearnTimer, "GPU learn time");
+
+	START_TIMER(gpuCompeteTimer);
+	PRE_KERNEL("compete_kernel");
+	compete_kernel<<<gridDim, blockDim, dynamic_shared_mem()>>>(agGPU->seeds, agGPU->wgts, d_champ_wgts);
+	POST_KERNEL(compete_kernel);
+	cudaThreadSynchronize();
+	STOP_TIMER(gpuCompeteTimer, "GPU benchmark time");
+
 	
 #ifdef DUMP_FINAL_AGENTS_GPU
 	dump_agentsGPU("agents after learning on GPU", agGPU, 1);
 #endif
+
+	cudaFree(d_champ_wgts);
 	return NULL;
 }
 
