@@ -31,6 +31,6 @@
 #define DUMP_FINAL_AGENTS_GPU
 //#define DUMP_CHAMP_WGTS
 
-//#define AGENT_DUMP_BOARD_ONLY
+#define AGENT_DUMP_BOARD_ONLY
 
 #endif
