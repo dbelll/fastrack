@@ -2,10 +2,10 @@ Today's Goals
 
 
 Must do:
-
+	Add timing to GPU code
 	Have random board generated on CPU and GPU at the start of each learning episode.
 	Create a random move function on GPU, matching the CPU version.
-	Compete kernel
+	Compete kernel for GPU
 
 Todo's
 
