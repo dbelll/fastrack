@@ -44,6 +44,8 @@
 		10E6B46712CF65B000674B57 /* dc_memory.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = dc_memory.h; sourceTree = "<group>"; };
 		10E6B4A412CF6CE800674B57 /* wgt_pointers.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = wgt_pointers.h; sourceTree = "<group>"; };
 		10E6B4A712CF6DB100674B57 /* prototypes.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = prototypes.h; sourceTree = "<group>"; };
+		10E6B4D512CF7B9B00674B57 /* board.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = board.h; sourceTree = "<group>"; };
+		10E6B4E712CF85EF00674B57 /* in_output.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = in_output.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -60,6 +62,8 @@
 		10294D9B11A1B93300AAF551 /* source */ = {
 			isa = PBXGroup;
 			children = (
+				10E6B4E712CF85EF00674B57 /* in_output.h */,
+				10E6B4D512CF7B9B00674B57 /* board.h */,
 				10E6B4A712CF6DB100674B57 /* prototypes.h */,
 				10E6B46712CF65B000674B57 /* dc_memory.h */,
 				10E6B4A412CF6CE800674B57 /* wgt_pointers.h */,

@@ -34,9 +34,11 @@ static int *g_moves = NULL;
 
 static unsigned *g_start_state = NULL;
 
+#include "prototypes.h"
 #include "dc_memory.h"
 #include "wgt_pointers.h"
-#include "prototypes.h"
+#include "board.h"
+#include "in_output.h"
 
 #pragma mark -
 #pragma mark Helpers
@@ -75,43 +77,30 @@ __device__ __host__ float sigmoid(float x)
 	return 1.0f/(1.0f + expf(-x));
 }
 
-// calculate index number for given row and column
-unsigned index4rc(unsigned row, unsigned col)
+#if GLOBAL_WGTS_FORMAT == 1
+unsigned calc_num_wgts(unsigned num_hidden, unsigned board_size)
 {
-	return row * g_p.board_width + col;
+	return num_hidden * (2 * board_size + 3);
 }
+unsigned calc_wgts_stride(unsigned num_hidden, unsigned board_size)
+{
+	return calc_num_wgts(num_hidden, board_size);
+}
+#elif GLOBAL_WGTS_FORMAT == 2
+unsigned calc_num_wgts(unsigned num_hidden, unsigned board_size)
+{
+	return num_hidden * (2 * board_size + 2) + 1;
+}
+unsigned calc_wgts_stride(unsigned num_hidden, unsigned board_size)
+{
+	return MAX_STATE_SIZE * (num_hidden + 2);
+}
+#endif
 
-// generate string for the cell at row and column
-char *move_string(char *buff, unsigned col, unsigned row)
-{
-	buff[0] = 'a' + col;
-	buff[1] = '1' + row;
-	return buff;
-}
-
-// generate string for the cell at given index
-char *move_stringi(char *buff, unsigned i)
-{
-	return move_string(buff, i % g_p.board_width, i / g_p.board_width);
-}
 
 
 #pragma mark -
 #pragma mark game functions
-
-unsigned is_empty(unsigned *board)
-{
-	for (int i = 0; i < g_p.board_size; i++) {
-		if (board[i]) return 0;
-	}
-	return 1;
-}
-
-unsigned not_empty(unsigned *board){ return !is_empty(board); }
-
-unsigned game_won(float reward){
-	return reward > 0.5f;
-}
 
 // Calculate the reward for the given state (from X's perspective)
 // and set the value for the terminal flag
@@ -167,41 +156,6 @@ float val_for_state(float *wgts, unsigned *state, float *hidden, float *out)
 }
 
 
-unsigned val_for_cell(unsigned row, unsigned col, unsigned *board)
-{
-	return board[index4rc(row, col)];
-}
-
-void set_val_for_cell(unsigned row, unsigned col, unsigned *board, unsigned val)
-{
-	board[index4rc(row, col)] = val;
-}
-
-char char_for_index(unsigned i, unsigned *state)
-{
-	unsigned s0 = X_BOARD(state)[i];
-	unsigned s1 = O_BOARD(state)[i];
-	if (s0 && s1) return '?';
-	else if (s0) return 'X';
-	else if (s1) return 'O';
-	return '.';
-}
-
-char char_for_board(unsigned row, unsigned col, unsigned *board)
-{
-	unsigned index = index4rc(row, col);
-//	printf("index for row %d, col%d is %d\n", row, col, index);
-//	printf("value of board there is %d\n", board[index]);
-	char ch = board[index] ? 'X' : '.';
-//	printf("char_for_board row=%d, col=%d is %c\n", row, col, ch);
-	return ch;
-}
-
-char char_for_cell(unsigned row, unsigned col, unsigned *state)
-{
-	return char_for_index(index4rc(row, col), state);
-}
-
 // add n pieces to un-occupied cells of a board
 void random_add(unsigned *board, unsigned n, unsigned *seeds, unsigned stride)
 {
@@ -232,7 +186,7 @@ unsigned count_board_piecesCPU(unsigned *board)
 	return count;
 }
 
-// duplicate the GPU method of getting a random board
+// duplicate the GPU method of getting a random board to match random number useage
 void random_board2(unsigned *board, unsigned n, unsigned *seeds, unsigned stride)
 {
 	for (int i = 0; i < g_p.board_size; i++) {
@@ -308,25 +262,11 @@ __host__ void switch_sides(unsigned *state)
 		O_BOARD(state)[i] = temp;
 	}
 }
-void copy_state(unsigned *to, unsigned *from)
-{
-	for (int i = 0; i < g_p.state_size; i++) {
-		to[i] = from[i];
-	}
-}
-
-unsigned count_pieces(unsigned *board)
-{
-	unsigned count = 0;
-	for (int i = 0; i < g_p.board_size; i++) {
-		if (board[i]) ++count;
-	}
-	return count;
-}
 
 #pragma mark -
-#pragma mark Read/write stuff
+#pragma mark Results
 
+// comparison function to sort by won/loss percentage
 int wl_compare(const void *p1, const void *p2)
 {
 	const WON_LOSS *wl1 = (const WON_LOSS *)p1;
@@ -340,6 +280,7 @@ int wl_compare(const void *p1, const void *p2)
 	return result; 
 }
 
+// comparison function to sort by agent
 int wl_byagent(const void *p1, const void *p2)
 {
 	const WON_LOSS *wl1 = (const WON_LOSS *)p1;
@@ -354,513 +295,6 @@ int wl_byagent(const void *p1, const void *p2)
 float winpct(WON_LOSS wl)
 {
 	return 0.5f * (1.0f + (float)(wl.wins - wl.losses)/(float)wl.games);
-}
-
-// Print sorted standings using the WON_LOSS information in standings (from learning vs. peers),
-// and vsChamp (from competing against benchmark agent).
-void print_standings(WON_LOSS *standings, WON_LOSS *vsChamp)
-{
-		qsort(standings, g_p.num_agents, sizeof(WON_LOSS), wl_compare);
-		printf(    "             G    W    L    PCT");
-		printf("   %4d games vs Champ\n", g_p.benchmark_games);
-
-		WON_LOSS totChamp = {0, 0, 0, 0};
-		WON_LOSS totStand = {0, 0, 0, 0};
-		
-		for (int i = 0; i < g_p.num_agents; i++) {
-//			printf("agent%4d  %4d %4d %4d  %5.3f", standings[i].agent, standings[i].games, standings[i].wins, standings[i].losses, 0.5f * (1.0f + (float)(standings[i].wins - standings[i].losses) / (float)standings[i].games));
-			printf("agent%4d  %4d %4d %4d  %5.3f", standings[i].agent, standings[i].games, standings[i].wins, standings[i].losses, winpct(standings[i]));
-			
-			totStand.games += standings[i].games;
-			totStand.wins += standings[i].wins;
-			totStand.losses += standings[i].losses;
-			
-			printf("  (%4d-%4d)    %+5d\n", vsChamp[standings[i].agent].wins,vsChamp[standings[i].agent].losses, vsChamp[standings[i].agent].wins - vsChamp[standings[i].agent].losses);
-			totChamp.games += vsChamp[standings[i].agent].games;
-			totChamp.wins += vsChamp[standings[i].agent].wins;
-			totChamp.losses += vsChamp[standings[i].agent].losses;
-		}
-		printf(" avg      %5d%5d%5d  %5.3f (%5.1f-%5.1f)   %+5.1f\n", totStand.games, totStand.wins, totStand.losses, winpct(totStand), (float)totChamp.wins / (float)g_p.num_agents, (float)totChamp.losses / (float)g_p.num_agents, (float)(totChamp.wins-totChamp.losses) / (float)g_p.num_agents);
-}
-
-// write the global parameters to a .CSV file
-void save_parameters(FILE *f)
-{
-	fprintf(f, "SEED, %u, CHAMP, %s\n", g_p.seed, AGENT_FILE_CHAMP);
-	fprintf(f, "board size, %d, %d\n", g_p.board_width, g_p.board_height);
-	fprintf(f, "NUM_PIECES, %d\n", g_p.num_pieces);
-	fprintf(f, "MAX_TURNS, %d\n", g_p.max_turns);
-	fprintf(f, "G_ALLOWABLE_MOVES:\n");
-	for (int m = 0; m < MAX_MOVES; m++) {
-		fprintf(f, "%d, %d\n", g_allowable_moves[m][0], g_allowable_moves[m][1]);
-	}
-	fprintf(f, "NUM_HIDDEN, %d\n", g_p.num_hidden);
-	fprintf(f, "INIT_WGT_MIN and MAX, %9.6f, %9.6f\n", g_p.init_wgt_min, g_p.init_wgt_max);
-	fprintf(f, "NUM_AGENTS, %d\n", g_p.num_agents);
-	fprintf(f, "NUM_SESSIONS, %d\n", g_p.num_sessions);
-	fprintf(f, "EPISODE_LENGTH, %d\n", g_p.episode_length);
-	fprintf(f, "WARMUP_LENGTH, %d\n", g_p.warmup_length);
-	fprintf(f, "alpha, %9.6f\n", g_p.alpha);
-	fprintf(f, "epsilon, %9.6f\n", g_p.epsilon);
-	fprintf(f, "gamma, %9.6f\n", g_p.gamma);
-	fprintf(f, "lambda, %9.6f\n", g_p.lambda);
-}
-
-// write agent weights to a file, including some game parameters
-void save_agent(const char *file, AGENT *ag, unsigned iAg)
-{
-	FILE *f = fopen(file, "w");
-	if (!f) {
-		printf("Can not open file for saving agent %s\n", file);
-		return;
-	}
-	// current file version number
-	static unsigned version = FILE_FORMAT;
-	
-	fprintf(f, "%d\n", version);
-	fprintf(f, "%d\n", g_p.board_width);
-	fprintf(f, "%d\n", g_p.board_height);
-	fprintf(f, "%d\n", g_p.num_pieces);
-	fprintf(f, "%d\n", g_p.max_turns);
-	fprintf(f, "%d\n", g_p.num_hidden);
-	fprintf(f, "%d\n", g_p.num_wgts);
-//	for (int i = 0; i < g_p.wgts_stride; i++) {
-//		fprintf(f, "%f\n", ag->wgts[iAg * g_p.wgts_stride + i]);
-//	}
-	
-	// B->H
-	for (int iH = 0; iH < g_p.num_hidden; iH++) fprintf(f, "%f\n", gBH(ag->wgts, iH));
-	// I->H
-	for (int iI = 0; iI < g_p.state_size; iI++)
-		for (int iH = 0; iH < g_p.num_hidden; iH++) 
-			fprintf(f, "%f\n", gIH(ag->wgts, iI, iH));
-	// H->O
-	for (int iH = 0; iH < g_p.num_hidden; iH++) fprintf(f, "%f\n", gHO(ag->wgts, iH));
-	// B->O
-	fprintf(f, "%f\n", gBO(ag->wgts));
-	
-	fclose(f);
-}
-
-// Read weights from the current file position and store in global format at wgts
-// wgts must have been allocated to hold g_p.wgts_stride values
-// Board width, height, and number of hidden nodes must match global parameters
-// File format for weights is:
-//		B->H		(num_hidden)
-//		I->H		(state_size * num_hidden)
-//		H->O		(num_hidden)
-//		B->O		1
-void read_wgts_aux(FILE *f, float *wgts, unsigned version, unsigned w, unsigned h, unsigned num_hidden)
-{
-	if (w != g_p.board_width || h != g_p.board_height || num_hidden != g_p.num_hidden) {
-		printf("*** ERROR *** agent file does not match current parameters:\n");
-		printf("            parameters  agent file\n");
-		printf("board size   (%3dx%3d)   (%3dx%3d)\n", g_p.board_width, g_p.board_height, w, h);
-		printf("hidden nodes    %3d         %3d\n", g_p.num_hidden, num_hidden);
-		return;
-	}
-	
-	switch (version) {
-		case 1:
-			for (int iH = 0; iH < g_p.num_hidden; iH++) fscanf(f, "%f", pgBH(wgts, iH));
-			for (int iI = 0; iI < g_p.state_size; iI++)
-				for (int iH = 0; iH < g_p.num_hidden; iH++)
-					fscanf(f, "%f", pgIH(wgts, iI, iH));
-			for (int iH = 0; iH < g_p.num_hidden; iH++) fscanf(f, "%f", pgHO(wgts, iH));
-			fscanf(f, "%f", pgBO(wgts));
-			break;
-		default:
-			printf("*** ERROR *** unknown file format %d\n", version);
-			break;
-	}
-}
-
-// Read an agent's values from a file.  AGENT structure and all members are pre-allocated.
-//void read_agent(FILE *f, AGENT *ag)
-//{
-//	unsigned version;
-//	unsigned board_width, board_height;
-//	unsigned num_pieces;
-//	unsigned max_turns;
-//	unsigned num_hidden;
-//	unsigned num_wgts;
-//	
-//	fscanf(f, "%d", &version);
-//
-//	switch (version) {
-//		case 1:
-//			fscanf(f, "%u", &board_width);
-//			fscanf(f, "%u", &board_height);
-//			fscanf(f, "%u", &num_pieces);
-//			fscanf(f, "%u", &max_turns);
-//			fscanf(f, "%u", &num_hidden);
-//			fscanf(f, "%u", &num_wgts);
-//			read_wgts_aux(f, ag->wgts, version, board_width, board_height, num_hidden);		
-//			break;
-//		default:
-//			printf("*** ERROR *** unknown file format %d\n", version);
-//			break;
-//	}
-//}
-//
-//unsigned read_num_wgts(FILE *f)
-//{
-//	unsigned version;
-//	unsigned board_width, board_height;
-//	unsigned num_pieces;
-//	unsigned max_turns;
-//	unsigned num_hidden;
-//	unsigned wgts_stride;
-//	fseek(f, 0L, SEEK_SET);
-//	fscanf(f, "%d", &version);
-//
-//	switch (version) {
-//		case 1:
-//			fscanf(f, "%u", &board_width);
-//			fscanf(f, "%u", &board_height);
-//			fscanf(f, "%u", &num_pieces);
-//			fscanf(f, "%u", &max_turns);
-//			fscanf(f, "%u", &num_hidden);
-//			fscanf(f, "%u", &wgts_stride);
-//			break;
-//		default:
-//			break;
-//	}
-//	return wgts_stride;
-//}
-//
-//unsigned read_num_hidden(FILE *f)
-//{
-//	unsigned version;
-//	unsigned board_width, board_height;
-//	unsigned num_pieces;
-//	unsigned max_turns;
-//	unsigned num_hidden;
-//	unsigned wgts_stride;
-//	fseek(f, 0L, SEEK_SET);
-//	fscanf(f, "%d", &version);
-//
-//	switch (version) {
-//		case 1:
-//			fscanf(f, "%u", &board_width);
-//			fscanf(f, "%u", &board_height);
-//			fscanf(f, "%u", &num_pieces);
-//			fscanf(f, "%u", &max_turns);
-//			fscanf(f, "%u", &num_hidden);
-//			fscanf(f, "%u", &wgts_stride);
-//			break;
-//		default:
-//			break;
-//	}
-//	printf("read_num_hidden: (%dx%d) board, %d pieces, %d turns, %d num_hidden, %d wgts_stride\n", board_width, board_height, num_pieces, max_turns, num_hidden, wgts_stride);
-//	return num_hidden;
-//}
-
-#if GLOBAL_WGTS_FORMAT == 1
-unsigned calc_num_wgts(unsigned num_hidden, unsigned board_size)
-{
-	return num_hidden * (2 * board_size + 3);
-}
-unsigned calc_wgts_stride(unsigned num_hidden, unsigned board_size)
-{
-	return calc_num_wgts(num_hidden, board_size);
-}
-#elif GLOBAL_WGTS_FORMAT == 2
-unsigned calc_num_wgts(unsigned num_hidden, unsigned board_size)
-{
-	return num_hidden * (2 * board_size + 2) + 1;
-}
-unsigned calc_wgts_stride(unsigned num_hidden, unsigned board_size)
-{
-	return MAX_STATE_SIZE * (num_hidden + 2);
-}
-#endif
-
-// Read in just the weights from an agent file
-// Print a warning if the file does not match global parameters
-// wgts must be pre-allocated to hold wgts_stride values
-void read_wgts(FILE *f, float *wgts)
-{
-	unsigned version;
-	unsigned board_width, board_height;
-	unsigned num_pieces;
-	unsigned max_turns;
-	unsigned num_hidden;
-	unsigned num_wgts;
-	
-	fseek(f, 0L, SEEK_SET);
-	fscanf(f, "%d", &version);
-
-	switch (version) {
-		case 1:
-			fscanf(f, "%u", &board_width);
-			fscanf(f, "%u", &board_height);
-			fscanf(f, "%u", &num_pieces);
-			fscanf(f, "%u", &max_turns);
-			fscanf(f, "%u", &num_hidden);
-			fscanf(f, "%u", &num_wgts);
-
-			printf("values from agent file:\n");
-			printf("board size: (%3dx%3d)\n", board_width, board_height);
-			printf("num_pieces = %d, max_turns = %d\n", num_pieces, max_turns);
-			printf("num_hidden = %d, num_wgts = %d\n", num_hidden, num_wgts);
-
-			read_wgts_aux(f, wgts, version, board_width, board_height, num_hidden);
-			break;
-			
-		default:
-			break;
-	}
-	printf("read_wgts: (%dx%d) board, %d pieces, %d turns, %d num_hidden, %d wgts_stride\n", board_width, board_height, num_pieces, max_turns, num_hidden, num_wgts);
-}
-
-// load weights for champ from a file
-float *load_champ(const char *file)
-{
-	FILE *f = fopen(file, "r");
-	if (!f) {
-		printf("could not open champ file %s\n", file);
-		exit(-1);
-	}
-	
-	// allocate an array and read in the weights
-	float *wgts = (float *)malloc(g_p.wgts_stride * sizeof(float));
-	read_wgts(f, wgts);
-	
-#ifdef DUMP_CHAMP_WGTS
-	printf("\n----------------\nchamp weights:\n-----------------\n");
-	dump_all_wgts(wgts, g_p.num_hidden);
-#endif
-
-	fclose(f);
-	return wgts;
-}
-
-void dump_col_header(unsigned leftMargin, unsigned nCols)
-{
-	while (leftMargin-- > 0) {
-		printf(" ");
-	}
-	for (int i = 0; i < nCols; i++) {
-		printf(" %c", 'a' + i);
-	}
-	printf("\n");
-}
-
-void dump_state_ints(unsigned *state)
-{
-	printf("[STATE]\n");
-	for (int i = 0; i < g_p.state_size; i++) {
-		printf("%11u", state[i]);
-	}
-	printf("]\n");
-}
-
-void dump_state(unsigned *state, unsigned turn, unsigned nextToPlay)
-{
-//	printf("state located at %p\n", state);
-	printf("\nturn %3d, %s to play:\n", turn, (nextToPlay ? "O" : "X"));
-	dump_col_header(3, g_p.board_width);
-	for (int row = g_p.board_height - 1; row >= 0; row--) {
-		printf("%2u ", row+1);
-		for (int col = 0; col < g_p.board_width; col++) {
-			printf(" %c", char_for_cell(row, col, state));
-		}
-		printf("%3u", row+1);
-		printf("\n");
-	}
-	dump_col_header(3, g_p.board_width);
-}
-
-// dump the board, using X for pieces
-void dump_board(unsigned *board)
-{
-	dump_col_header(3, g_p.board_width);
-	for (int row = g_p.board_height - 1; row >= 0; row--) {
-		printf("%2u ", row+1);
-		for (int col = 0; col < g_p.board_width; col++) {
-			printf(" %c", char_for_board(row, col, board));
-		}
-		printf("%3u", row+1);
-		printf("\n");
-	}
-	dump_col_header(3, g_p.board_width);
-}
-
-void dump_boards(unsigned *board, unsigned n)
-{
-	for (int i = 0; i < n; i++) {
-		printf("board %d:\n", i);
-		dump_board(board + i * g_p.board_size);
-	}
-}
-
-void dump_states(unsigned *state, unsigned n)
-{
-	for (int i = 0; i < n; i++) {
-		printf("state %d:\n", i);
-		dump_state(state + i * g_p.state_size, 0, 0);
-	}
-}
-
-void dump_boardsGPU(unsigned *board, unsigned n)
-{
-	printf("dumping %d boards at %p\n", n, board);
-	
-	unsigned *boardsCPU = host_copyui(board, n * g_p.board_size);
-	host_dumpui("boards copied to host", boardsCPU, n * g_p.board_height, g_p.board_width);
-	dump_boards(boardsCPU, n);
-	free(boardsCPU);
-}
-
-void dump_agentsGPU(const char *str, AGENT *agGPU, unsigned dumpW)
-{
-	printf("dump_agentsGPU\n");
-	
-	// create a CPU copy of the GPU agent data
-	AGENT *agCPU = (AGENT *)malloc(sizeof(AGENT));
-	
-	agCPU->seeds = host_copyui(agGPU->seeds, 4 * g_p.num_agents * g_p.board_size);
-	agCPU->states = host_copyui(agGPU->states, g_p.num_agents * g_p.state_size);
-	agCPU->next_to_play = host_copyui(agGPU->next_to_play, g_p.num_agents);
-	agCPU->wgts = host_copyf(agGPU->wgts, g_p.num_agent_floats * g_p.num_agents);
-	set_agent_float_pointers(agCPU);
-	
-	dump_agentsCPU(str, agCPU, dumpW);
-	
-	freeAgentCPU(agCPU);
-}
-
-void dump_statesGPU(unsigned *state, unsigned n)
-{
-	printf("dumping %d states at %p\n", n, state);
-	
-	unsigned *statesCPU = host_copyui(state, n * g_p.state_size);
-	host_dumpui("states copied to host", statesCPU, 2 * n * g_p.board_height, g_p.board_width);
-	dump_states(statesCPU, n);
-	free(statesCPU);
-}
-
-void dump_wgts_header(const char *str)
-{
-	printf("%s", str);
-	for (int i = 0; i < g_p.num_hidden; i++) {
-		printf(",  %6d  ", i);
-	}
-	printf("\n");
-}
-
-// dump of weight values from input to hidden
-void dump_wgts_IH(float *wgts, unsigned iI)
-{
-	printf("[IN%03d->H]", iI); 
-	for (int iH = 0; iH < g_p.num_hidden; iH++) {
-		printf(", %9.4f", gIH(wgts, iI, iH));
-	}
-	printf("\n");
-}
-
-void dump_wgts_BH(float *wgts)
-{
-	printf("[    B->H]"); 
-	for (int i = 0; i < g_p.num_hidden; i++) {
-		printf(", %9.4f", gBH(wgts, i));
-	}
-	printf("\n");
-}
-
-void dump_wgts_HO(float *wgts)
-{
-	printf("[    H->O]"); 
-	for (int i = 0; i < g_p.num_hidden; i++) {
-		printf(", %9.4f", gHO(wgts, i));
-	}
-	printf("\n");
-}
-
-void dump_wgts_BO(float *wgts)
-{
-	printf("[    B->O], %9.4f\n\n", gBO(wgts));
-}
-
-// print out all weights in a formatted output
-void dump_all_wgts(float *wgts, unsigned num_hidden)
-{
-	dump_wgts_header("[ WEIGHTS]");
-	dump_wgts_BH(wgts);
-	for (int i = 0; i < g_p.state_size; i++) dump_wgts_IH(wgts, i);
-	dump_wgts_HO(wgts);
-	dump_wgts_BO(wgts);
-}
-
-void dump_agent(AGENT *agCPU, unsigned iag, unsigned dumpW)
-{
-#ifndef AGENT_DUMP_BOARD_ONLY
-	printf("[SEEDS], %10u, %10u %10u %10u\n", agCPU->seeds[iag], agCPU->seeds[iag + g_p.num_agents], agCPU->seeds[iag + 2 * g_p.num_agents], agCPU->seeds[iag + 3 * g_p.num_agents]);
-
-	dump_wgts_header("[ WEIGHTS]");
-	// get the weight pointer for this agent
-	float *pWgts = agCPU->wgts + iag * g_p.wgts_stride;
-
-	dump_wgts_BH(pWgts);
-	for (int i = 0; i < g_p.state_size; i++) dump_wgts_IH(pWgts, i);
-	dump_wgts_HO(pWgts);
-	dump_wgts_BO(pWgts);
-
-	if (dumpW) {
-		dump_wgts_header("[    W    ]");
-		// get the W pointer for this agent
-		float *pW = agCPU->e + iag * g_p.wgts_stride;
-		dump_wgts_BH(pW);
-		for (int i = 0; i < g_p.state_size; i++) dump_wgts_IH(pW, i);
-		dump_wgts_HO(pW);
-		dump_wgts_BO(pW);
-	}
-
-	printf("[   alpha], %9.4f\n", agCPU->alpha[iag]);
-	printf("[ epsilon], %9.4f\n", agCPU->epsilon[iag]);
-	printf("[  lambda], %9.4f\n", agCPU->lambda[iag]);
-#endif	
-	dump_state(agCPU->states + iag*g_p.state_size, 0, agCPU->next_to_play[iag]);
-}
-
-// dump all agents, flag controls if the eligibility trace values are also dumped
-void dump_agentsCPU(const char *str, AGENT *agCPU, unsigned dumpW)
-{
-	printf("======================================================================\n");
-	printf("%s\n", str);
-	printf("----------------------------------------------------------------------\n");
-	for (int i = 0; i < g_p.num_agents; i++) {
-		printf("\n[AGENT%5d] - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - \n", i);
-		dump_agent(agCPU, i, dumpW);
-	}
-	printf("======================================================================\n");
-	
-}
-
-
-#pragma mark -
-#pragma mark RESULTS functions
-void dumpResults(RESULTS *r)
-{
-	FILE *f = fopen(LEARNING_LOG_FILE, "w");
-	if (!f) {
-		printf("could not open the LEARNING_LOG_FILE %s\n", LEARNING_LOG_FILE);
-		return;
-	}
-
-	save_parameters(f);
-	
-	// loop through each session and save the won-loss data to the LEARNING_LOG_FILE
-	for (int iSession = 0; iSession < g_p.num_sessions; iSession++) {
-		// sort the standings by agent number (vsChamp is already by agent number)
-		qsort(r->standings + iSession * g_p.num_agents, g_p.num_agents, sizeof(WON_LOSS), wl_byagent);
-		for (int iAg = 0; iAg < g_p.num_agents; iAg++) {
-			unsigned iStand = iSession * g_p.num_agents + iAg;
-			fprintf(f, "%d, %d, %d, %d, %d, %d, %d, %d\n", iSession, iAg, r->standings[iStand].games, r->standings[iStand].wins, r->standings[iStand].losses, r->vsChamp[iStand].games, r->vsChamp[iStand].wins, r->vsChamp[iStand].losses);
-		}
-	}
-	fclose(f);
 }
 
 // Allocate a RESULTS struture to hold results for p.num_sessions
@@ -884,7 +318,9 @@ void freeResults(RESULTS *r)
 }
 
 
-#pragma mark Initialization
+#pragma mark -
+#pragma mark Init
+
 // build the start state with pieces filling first row on each side
 void build_start_state()
 {
@@ -1070,12 +506,6 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_episode_length", &g_p.episode_length, sizeof(unsigned)));
 	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_benchmark_games", &g_p.benchmark_games, sizeof(unsigned)));
 	
-//	unsigned half_board_size = 1;
-//	while (half_board_size < g_p.board_size) {
-//		half_board_size <<= 1;
-//	}
-//	half_board_size >>=1;	// now half_board_size is the largest power of two less board_size
-	
 	unsigned reps_for_wgts = 1 + (g_p.num_wgts - 1) / g_p.board_size;
 	printf("reps_for_wgts on GPU is %d\n", reps_for_wgts);
 	cudaMemcpyToSymbol("dc_reps_for_wgts", &reps_for_wgts, sizeof(unsigned));
@@ -1096,7 +526,7 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 	return agGPU;
 }
 
-
+#pragma mark -
 #pragma mark CPU - run
 
 // Make a random X move, updating state
@@ -1337,7 +767,7 @@ void update_trace(unsigned *state, float *wgts, float *e, float *hidden, float *
 	// first the bias
 	float g_prime_i = out[0] * (1.0f - out[0]);
 //	printf("out[0] is %9.4f and g_prime(out) is %9.4f\n", out[0], g_prime_i);
-	unsigned iH2O = (2 * g_p.board_size + 1) * g_p.num_hidden;
+//	unsigned iH2O = (2 * g_p.board_size + 1) * g_p.num_hidden;
 //	e[iH2O + g_p.num_hidden] += -1.0f * g_prime_i;
 	*pgBO(e) += -1.0f * g_prime_i;
 	
@@ -1812,11 +1242,13 @@ RESULTS *runCPU(AGENT *agCPU, float *champ_wgts)
 #pragma mark -
 #pragma mark GPU helpers
 
-// Count the number of pieces on a board without modifying the board.
+// Sum the values for a board, non-destructively
 // The total is stored in s_count[0]
-// idx ranges from 0 to at least dc_half_board_size
-__device__ void count_board_pieces(unsigned idx, unsigned *s_board, unsigned *s_count)
+// Size of s_count must be at least dc_half_board_size
+// *** Requires half_board_size threads ***
+__device__ void count_board_pieces(unsigned *s_board, unsigned *s_count)
 {
+	unsigned idx = threadIdx.x;	
 	unsigned half = dc_half_board_size;
 	if (idx < half) s_count[idx] = s_board[idx];
 	if (idx + half < dc_board_size) s_count[idx] += s_board[idx + half];
@@ -1831,7 +1263,7 @@ __device__ void count_board_pieces(unsigned idx, unsigned *s_board, unsigned *s_
 
 // Sum up the values for a board, leaving the total in s_board[0]
 // Destroys values in the board.
-// Threads must range from 0 to dc_half_board_size
+// *** Requires half_board_size threads ***
 __device__ void reduce_board(float *s_board)
 {
 	unsigned idx = threadIdx.x;
@@ -1844,6 +1276,9 @@ __device__ void reduce_board(float *s_board)
 	}
 }
 
+// Sum the values for the hidden nodes.
+// Destructive.
+// *** Requires half_hidden threads ***
 __device__ void reduce_hidden(float *s_hidden)
 {
 	unsigned idx = threadIdx.x;
@@ -1858,10 +1293,11 @@ __device__ void reduce_hidden(float *s_hidden)
 
 // Fill in the board with random pieces (uses dc_board_size and dc_num_pieces)
 //		s_board points to the board for this agent
-//		s_temp is a temporary area of size board_size/2
+//		s_temp is a temporary area of size at least board_size/2
 //		idx is the thread number which represents the cell, must range from 0 to (dc_board_size - 1)
 //		seeds points to 1st seed for this agent
 //		stride is the stride of seeds
+// *** Requires board_size threads ***
 __device__ void random_board(unsigned *s_board, unsigned *s_temp, unsigned *seeds, unsigned stride)
 {
 	unsigned idx = threadIdx.x;
@@ -1873,18 +1309,7 @@ __device__ void random_board(unsigned *s_board, unsigned *s_temp, unsigned *seed
 	}
 	__syncthreads();
 	
-	// count the number of 1's
-//	unsigned half = dc_half_board_size;
-//	if (idx < half) s_temp[idx] = s_board[idx];
-//	if (idx + half < dc_board_size) s_temp[idx] += s_board[idx + half];
-//	__syncthreads();
-//	while (0 < (half >>= 1)) {
-//		if (idx < half) {
-//			s_temp[idx] += s_temp[idx + half];
-//		}
-//		__syncthreads();
-//	}
-	count_board_pieces(idx, s_board, s_temp);
+	count_board_pieces(s_board, s_temp);
 	// s_temp[0] now contains the number of 1's
 	
 	// use thread 0 to add/remove pieces to get the correct total
@@ -1902,7 +1327,8 @@ __device__ void random_board(unsigned *s_board, unsigned *s_temp, unsigned *seed
 	__syncthreads();
 }
 
-
+// Create a random board, but avoid the cells occupied in s_mask
+// *** Requires board_size threads ***
 __device__ void random_board_masked(unsigned *s_board, unsigned *s_mask, unsigned *s_temp, unsigned *seeds, unsigned stride)
 {
 	unsigned idx = threadIdx.x;
@@ -1911,21 +1337,9 @@ __device__ void random_board_masked(unsigned *s_board, unsigned *s_mask, unsigne
 		if (dc_piece_ratioO > RandUniform(seeds + idx, stride) && !s_mask[idx]) s_board[idx] = 1;
 		else s_board[idx] = 0;
 	}
-//	if (idx < dc_board_size && dc_piece_ratioO > RandUniform(seeds + idx, stride) && !s_mask[idx])
-//		s_board[idx] = 1;
-//	else s_board[idx] = 0;
 	__syncthreads();
 	
-	// count the number of ones
-//	unsigned half = dc_half_board_size;
-//	if (idx < half) s_temp[idx] = s_board[idx];
-//	if (idx + half < dc_board_size) s_temp[idx] += s_board[idx + half];
-//	__syncthreads();
-//	while (0 < (half >>= 1)) {
-//		if (idx < half) s_temp[idx] += s_temp[idx + half];
-//		__syncthreads();
-//	}
-	count_board_pieces(idx, s_board, s_temp);
+	count_board_pieces(s_board, s_temp);
 	// s_temp[0] now contains the number of 1's
 	
 	if (idx == 0) {
@@ -1942,27 +1356,30 @@ __device__ void random_board_masked(unsigned *s_board, unsigned *s_mask, unsigne
 	__syncthreads();
 }
 
-
+// Create a random starting state
+// *** Requires board_size threads ***
 __device__ void random_stateGPU(unsigned *s_state, float *s_temp, unsigned *s_seeds, unsigned stride)
 {
 	random_board(s_state, (unsigned *)s_temp, s_seeds, dc_board_size);
 	random_board_masked(s_state + dc_board_size, s_state, (unsigned *)s_temp, s_seeds, dc_board_size);
 }
 
-
+// Calculate the reward for a given state, setting the terminal flag, ps_terminal,
+// and storing the reward in ps_reward.
+// *** Requires half_board_size threads ***
 __device__ void rewardGPU(unsigned *s_state, unsigned *s_temp, unsigned *ps_terminal, float *ps_reward)
 {
 	unsigned idx = threadIdx.x;
 	if (idx == 0){ *ps_terminal = 0; *ps_reward = 0.0f; }
 	__syncthreads();
 	
-	count_board_pieces(idx, O_BOARDGPU(s_state), s_temp);
+	count_board_pieces(O_BOARDGPU(s_state), s_temp);
 	if (idx == 0 && 0 == s_temp[0]) {
 		*ps_terminal = 1;
 		*ps_reward = REWARD_WIN;
 	}
 	__syncthreads();
-	count_board_pieces(idx, X_BOARDGPU(s_state), s_temp);
+	count_board_pieces(X_BOARDGPU(s_state), s_temp);
 	if (idx == 0 && 0 == s_temp[0]) {
 		*ps_terminal = 1;
 		*ps_reward = REWARD_LOSS;
@@ -1970,8 +1387,65 @@ __device__ void rewardGPU(unsigned *s_state, unsigned *s_temp, unsigned *ps_term
 	__syncthreads();
 }
 
+// Switch X and O pieces of a state
+// *** Requires board_size threads ***
+__device__ void switch_sidesGPU(unsigned *s_state)
+{
+	unsigned idx = threadIdx.x;
+	unsigned temp = s_state[idx];
+	s_state[idx] = s_state[idx + dc_board_size];
+	s_state[idx + dc_board_size] = temp;
+}
+
+// Copy weights from global memory to shared memory
+//	*** Requires board_size threads ***
+__device__ void copy_wgts_to_s(float *g_wgts, float *s_wgts)
+{
+	unsigned idx = threadIdx.x;
+	for (int iH = 0; iH < dc_num_hidden; iH++) {
+		S_IXH(s_wgts, iH)[idx] = G_IXH(g_wgts, iH)[idx];
+		S_IOH(s_wgts, iH)[idx] = G_IOH(g_wgts, iH)[idx];
+	}
+	
+	if (idx < dc_num_hidden) {
+		S_BH(s_wgts)[idx] = G_BH(g_wgts)[idx];
+		S_HO(s_wgts)[idx] = G_HO(g_wgts)[idx];
+	}
+
+	if (idx == 0) {
+		S_BO(s_wgts)[idx] = G_BO(g_wgts)[idx];
+	}
+	__syncthreads();
+}
+
+// Copy weights from shared memory to global memory
+//	*** Requires board_size threads ***
+__device__ void copy_wgts_to_g(float *s_wgts, float *g_wgts)
+{
+	unsigned idx = threadIdx.x;
+	for (int iH = 0; iH < dc_num_hidden; iH++) {
+		G_IXH(g_wgts, iH)[idx] = S_IXH(s_wgts, iH)[idx];
+		G_IOH(g_wgts, iH)[idx] = S_IOH(s_wgts, iH)[idx];
+	}
+	
+	if (idx < dc_num_hidden) {
+		G_BH(g_wgts)[idx] = S_BH(s_wgts)[idx];
+		G_HO(g_wgts)[idx] = S_HO(s_wgts)[idx];
+	}
+
+	if (idx == 0) {
+		G_BO(g_wgts)[idx] = S_BO(s_wgts)[idx];
+	}
+	__syncthreads();
+}
+
+
+#pragma mark -
+#pragma mark GPU code
+
 // Calcualte the value for a state s using the specified weights,
-// storing hidden activation in the specified location and stroing output value in *ps_V
+// storing hidden activation in the specified location and storing output value in *ps_V
+// *** Requires board_size threads ***
 __device__ void val_for_stateGPU(float *s_wgts, unsigned *s_state, float *s_hidden, float *s_out, float *s_temp, unsigned *ps_terminal, float *ps_V)
 {
 	unsigned idx = threadIdx.x;
@@ -2012,10 +1486,12 @@ __device__ void val_for_stateGPU(float *s_wgts, unsigned *s_state, float *s_hidd
 	__syncthreads();
 }
 
+// Reset trace values to 0.0f
+// *** Requires board_size threads ***
 __device__ void reset_traceGPU(float *s_e)
 {
 	unsigned idx = threadIdx.x;
-	
+		
 	for (int i = 0; i < dc_reps_for_wgts; i++) {
 		if (idx + i * dc_board_size < dc_num_wgts) {
 			s_e[idx + i * dc_board_size] = 0.0f;
@@ -2024,6 +1500,9 @@ __device__ void reset_traceGPU(float *s_e)
 	__syncthreads();
 }
 
+// Update the weights based on delta value and eligibility trace
+//		(new wgt) = (old wgt) + (alpha * delta * eligibility trace)
+// *** Requires board_size threads ***
 __device__ void update_wgtsGPU(float s_alpha, float delta, float *s_wgts, float *s_e)
 {
 	unsigned idx = threadIdx.x;
@@ -2036,6 +1515,13 @@ __device__ void update_wgtsGPU(float s_alpha, float delta, float *s_wgts, float 
 	__syncthreads();
 }
 
+// Update the eligibility trace
+//		First, eligibility trace is decayed by a factor of gamma * lambda
+//		Next, the eligitity traces are increased using the gradients
+// On entry, s_out[0] contains the output activation values,
+//           s_hidden contains the activation values for the hidden nodes,
+//           s_temp is a working area with of size >= board_size
+// *** Requires board_size threads ***
 __device__ void update_traceGPU(unsigned *s_state, float *s_wgts, float *s_e, float *s_hidden, float *s_out, float lambda, float *s_temp)
 {
 	unsigned idx = threadIdx.x;
@@ -2056,6 +1542,7 @@ __device__ void update_traceGPU(unsigned *s_state, float *s_wgts, float *s_e, fl
 	}
 	__syncthreads();
 	
+	// update weights from input to hidden nodes
 	for (int iH = 0; iH < dc_num_hidden; iH++) {
 		s_temp[idx] = s_hidden[iH] * (1.0f - s_hidden[iH]) * S_HO(s_wgts)[iH] * s_out[0] * (1.0f - s_out[0]);	// g_prime_j
 		if (idx == 0) S_BH(s_e)[iH] += -1.0f * s_temp[idx];
@@ -2065,25 +1552,22 @@ __device__ void update_traceGPU(unsigned *s_state, float *s_wgts, float *s_e, fl
 	__syncthreads();
 }
 
-__device__ void switch_sidesGPU(unsigned *s_state)
-{
-	unsigned idx = threadIdx.x;
-	unsigned temp = s_state[idx];
-	s_state[idx] = s_state[idx + dc_board_size];
-	s_state[idx + dc_board_size] = temp;
-}
-
+/*
+	Choose the next move for X.
+	The next move is the move with the highest value for the resulting state.
+	The state is modified for the chosen move, and the terminal flag, ps_terminal is set.
+	The value for the new state is stored in *ps_V.
+	
+	*** Requires board_size threads ***
+*/
 __device__ void choose_moveGPU(unsigned *s_state, float *s_temp, float *s_wgts, float *s_hidden, float *s_out, unsigned *ps_terminal, float *ps_V)
 {
 	unsigned idx = threadIdx.x;
 	
-	// first see if the current board is terminal state
-//	unsigned terminal;
 	unsigned noVal = 1;
 	float bestVal;
 	unsigned iBestFrom;
 	unsigned iBestTo;
-//	float reward;
 
 	// check for terminal condition
 	rewardGPU(s_state, (unsigned *)s_temp, ps_terminal, ps_V);
@@ -2133,9 +1617,17 @@ __device__ void choose_moveGPU(unsigned *s_state, float *s_temp, float *s_wgts, 
 	}
 	__syncthreads();
 	
+	// recalculate value to set the s_out and s_hidden activation values
 	val_for_stateGPU(s_wgts, s_state, s_hidden, s_out, s_temp, ps_terminal, ps_V);
 }
 
+/*
+	Player O makes a move based on the highest resulting board value from O's perspective.
+	X and O sides of the state are switched and then choose_moveGPU is used to select the move
+	Sets terminal flag and reward values.
+	
+	*** Requires board_size threads ***
+*/
 __device__ void take_actionGPU(unsigned *s_state, float *s_temp, float *s_owgts, float *s_hidden, float *s_out, unsigned *ps_terminal, float *s_ophidden, float *ps_reward)
 {
 	rewardGPU(s_state, (unsigned *)s_temp, ps_terminal, ps_reward);
@@ -2148,56 +1640,21 @@ __device__ void take_actionGPU(unsigned *s_state, float *s_temp, float *s_owgts,
 	__syncthreads();
 }
 
-// copy weights from global memory to compact, shared memory
-// idx is [0, board_size)
-// g_wgts points to weights for this agent
-__device__ void copy_wgts_to_s(float *g_wgts, float *s_wgts)
-{
-	unsigned idx = threadIdx.x;
-	for (int iH = 0; iH < dc_num_hidden; iH++) {
-		S_IXH(s_wgts, iH)[idx] = G_IXH(g_wgts, iH)[idx];
-		S_IOH(s_wgts, iH)[idx] = G_IOH(g_wgts, iH)[idx];
-	}
+
+/*
+	Run an episode of learning against a static opponent
 	
-	if (idx < dc_num_hidden) {
-		S_BH(s_wgts)[idx] = G_BH(g_wgts)[idx];
-		S_HO(s_wgts)[idx] = G_HO(g_wgts)[idx];
-	}
+	Arguments are the global values for all agents for seeds, wgts, and eligibility trace
+	ag2_wgts contains the weights for the opponent
 
-	if (idx == 0) {
-		S_BO(s_wgts)[idx] = G_BO(g_wgts)[idx];
-	}
-	__syncthreads();
-}
-
-__device__ void copy_wgts_to_g(float *s_wgts, float *g_wgts)
-{
-	unsigned idx = threadIdx.x;
-	for (int iH = 0; iH < dc_num_hidden; iH++) {
-		G_IXH(g_wgts, iH)[idx] = S_IXH(s_wgts, iH)[idx];
-		G_IOH(g_wgts, iH)[idx] = S_IOH(s_wgts, iH)[idx];
-	}
+	blockIdx.x is the agent number for the learner
 	
-	if (idx < dc_num_hidden) {
-		G_BH(g_wgts)[idx] = S_BH(s_wgts)[idx];
-		G_HO(g_wgts)[idx] = S_HO(s_wgts)[idx];
-	}
-
-	if (idx == 0) {
-		G_BO(g_wgts)[idx] = S_BO(s_wgts)[idx];
-	}
-	__syncthreads();
-}
-
-
-// block number is the agent number,
-// threads per block is board_size
+	*** Requires board_size threads ***
+*/
 __global__ void learn_kernel(unsigned *seeds, float *wgts, float *e, float *ag2_wgts)
 {
 	unsigned idx = threadIdx.x;
 	unsigned iAgent = blockIdx.x;
-//	unsigned iAgentBS = blockIdx.x * dc_board_size;
-//	unsigned iAgentWgts = blockIdx.x * dc_wgts_stride;
 	
 	// static shared memory
 	__shared__ float s_rand;
@@ -2214,18 +1671,18 @@ __global__ void learn_kernel(unsigned *seeds, float *wgts, float *e, float *ag2_
 	__shared__ unsigned s_tempui;
 	__shared__ float s_tempf;
 
-	// dynamic shared memory
-	extern __shared__ unsigned s_seeds[];						// 4 * dc_board_size
-	unsigned *s_state = s_seeds + 4 * dc_board_size;			// dc_state_size
-	float *s_temp = (float *)(s_state + dc_state_size);			// dc_board_size
-	float *s_hidden = s_temp + dc_board_size;		// dc_num_hidden
-	float *s_out = s_hidden + dc_num_hidden;					// dc_num_hidden
-	float *s_ophidden = s_out + dc_num_hidden;					// dc_num_hidden
-	float *s_wgts = s_ophidden + dc_num_hidden;					// dc_num_wgts
-	float *s_e = s_wgts + dc_num_wgts;							// dc_num_wgts
-	float *s_opwgts = s_e + dc_num_wgts;						// dc_num_wgts
+	// dynamic shared memory								------ size ------
+	extern __shared__ unsigned s_seeds[];					// 4 * dc_board_size
+	unsigned *s_state = s_seeds + 4 * dc_board_size;		// dc_state_size
+	float *s_temp = (float *)(s_state + dc_state_size);		// dc_board_size
+	float *s_hidden = s_temp + dc_board_size;				// dc_num_hidden
+	float *s_out = s_hidden + dc_num_hidden;				// dc_num_hidden
+	float *s_ophidden = s_out + dc_num_hidden;				// dc_num_hidden
+	float *s_wgts = s_ophidden + dc_num_hidden;				// dc_num_wgts
+	float *s_e = s_wgts + dc_num_wgts;						// dc_num_wgts
+	float *s_opwgts = s_e + dc_num_wgts;					// dc_num_wgts
 	
-	// copy values to shared memory
+	// copy individual values to shared memory and initialize
 	if (idx == 0){
 		s_lambda = dc_ag.lambda[iAgent];
 		s_alpha = dc_ag.alpha[iAgent];
@@ -2352,7 +1809,7 @@ __global__ void learn_kernel(unsigned *seeds, float *wgts, float *e, float *ag2_
 
 }
 
-// calculate the 
+// calculate the amount of dynmaic shared memory needed
 unsigned dynamic_shared_mem()
 {
 	unsigned count = 4 * g_p.board_size;	// s_seeds
