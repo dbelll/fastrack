@@ -20,7 +20,7 @@ void save_parameters(FILE *f)
 	}
 	fprintf(f, "NUM_HIDDEN, %d\n", g_p.num_hidden);
 	fprintf(f, "INIT_WGT_MIN and MAX, %9.6f, %9.6f\n", g_p.init_wgt_min, g_p.init_wgt_max);
-	fprintf(f, "NUM_AGENTS, %d\n", g_p.num_agents);
+	fprintf(f, "NUM_AGENTS, %d, OP_FRACTION %d\n", g_p.num_agents, g_p.op_fraction);
 	fprintf(f, "NUM_SESSIONS, %d\n", g_p.num_sessions);
 	fprintf(f, "EPISODE_LENGTH, %d\n", g_p.episode_length);
 	fprintf(f, "WARMUP_LENGTH, %d\n", g_p.warmup_length);

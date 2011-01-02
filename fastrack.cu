@@ -1120,12 +1120,16 @@ RESULTS *runCPU(AGENT *agCPU, float *champ_wgts)
 			r->standings[iStand].games = 0;
 			r->standings[iStand].wins = 0;
 			r->standings[iStand].losses = 0;
+			r->vsChamp[iStand].agent= iAg;
+			r->vsChamp[iStand].games = 0;
+			r->vsChamp[iStand].wins = 0;
+			r->vsChamp[iStand].losses = 0;
 
 //			for (int iOp = 0; iOp < g_p.num_agents; iOp++) {
 //				unsigned xOp = (iAg + iOp) % g_p.num_agents;
 
 			// compete against the top half of the agents from previous standings
-			for (int iOp = 0; iOp < g_p.num_agents/((iSession > 0) ? 2 : 1); iOp++){
+			for (int iOp = 0; iOp < g_p.num_agents/((iSession > 0) ? g_p.op_fraction : 1); iOp++){
 				unsigned xOp = iOp;
 				if (iSession > 0) xOp = r->standings[(iSession-1) * g_p.num_agents + iOp].agent;
 
@@ -2029,7 +2033,7 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 		POST_KERNEL(copy_wgts_kernel);		
 		
 		// do learning against other agents
-		for (int iOp = 0; iOp < g_p.num_agents / ((iSession > 0) ? 2 : 1); iOp++) {
+		for (int iOp = 0; iOp < g_p.num_agents / ((iSession > 0) ? g_p.op_fraction : 1); iOp++) {
 			unsigned xOp = iOp;
 			if (iSession > 0) xOp = lastStandings[iOp].agent;
 

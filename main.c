@@ -64,10 +64,12 @@ void dump_params(PARAMS p)
 	printf("   init_wgt_max     %7.4f\n", p.init_wgt_max);
 	printf("learning parameters:\n");
 	printf("   num_agents       %7d\n", p.num_agents);
+	printf("   op_fraction      %7d\n", p.op_fraction);
 	printf("   num_sessions     %7d\n", p.num_sessions);
 	printf("   episode_length   %7d\n", p.episode_length);
 	printf("   warmup_length    %7d\n", p.warmup_length);
 	printf("   benchmark games  %7d\n", p.benchmark_games);
+	printf("   benchmark freq   %7d\n", p.benchmark_freq);
 	printf("   alpha            %7.4f\n", p.alpha);
 	printf("   epsilon          %7.4f\n", p.epsilon);
 	printf("   gamma            %7.4f\n", p.gamma);
@@ -122,6 +124,7 @@ PARAMS read_params(int argc, const char **argv)
 	p.warmup_length = GET_PARAM("WARMUP_LENGTH", 256);
 	p.benchmark_games = GET_PARAM("BENCHMARK_GAMES", 1000);
 	p.benchmark_freq = GET_PARAM("BENCHMARK_FREQ", 4);
+	p.op_fraction = GET_PARAM("OP_FRACTION", 2);
 	
 	p.run_on_CPU = PARAM_PRESENT("CPU");
 	p.run_on_GPU = PARAM_PRESENT("GPU");
