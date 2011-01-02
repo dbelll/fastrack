@@ -148,9 +148,12 @@ void dumpResultsGPU(RESULTS *rGPU)
 // and vsChamp (from competing against benchmark agent).
 void print_standings(WON_LOSS *standings, WON_LOSS *vsChamp)
 {
+	unsigned printBenchmark = 0 < vsChamp[0].games;
+	
 	qsort(standings, g_p.num_agents, sizeof(WON_LOSS), wl_compare);
 	printf(    "             G    W    L    PCT");
-	printf("   %4d games vs Champ\n", g_p.benchmark_games);
+	if (printBenchmark) printf("   %4d games vs Champ\n", g_p.benchmark_games);
+	else printf("\n");
 	
 	WON_LOSS totChamp = {0, 0, 0, 0};
 	WON_LOSS totStand = {0, 0, 0, 0};
@@ -163,12 +166,16 @@ void print_standings(WON_LOSS *standings, WON_LOSS *vsChamp)
 		totStand.wins += standings[i].wins;
 		totStand.losses += standings[i].losses;
 		
-		printf("  (%4d-%4d)    %+5d\n", vsChamp[standings[i].agent].wins,vsChamp[standings[i].agent].losses, (int)vsChamp[standings[i].agent].wins - (int)vsChamp[standings[i].agent].losses);
-		totChamp.games += vsChamp[standings[i].agent].games;
-		totChamp.wins += vsChamp[standings[i].agent].wins;
-		totChamp.losses += vsChamp[standings[i].agent].losses;
+		if (printBenchmark) {
+			printf("  (%4d-%4d)    %+5d\n", vsChamp[standings[i].agent].wins,vsChamp[standings[i].agent].losses, (int)vsChamp[standings[i].agent].wins - (int)vsChamp[standings[i].agent].losses);
+			totChamp.games += vsChamp[standings[i].agent].games;
+			totChamp.wins += vsChamp[standings[i].agent].wins;
+			totChamp.losses += vsChamp[standings[i].agent].losses;
+		}else printf("\n");
 	}
-	printf(" avg      %5d%5d%5d  %5.3f (%5.1f-%5.1f)   %+5.1f\n", totStand.games, totStand.wins, totStand.losses, winpct(totStand), (float)totChamp.wins / (float)g_p.num_agents, (float)totChamp.losses / (float)g_p.num_agents, (float)((int)totChamp.wins-(int)totChamp.losses) / (float)g_p.num_agents);
+	printf(" avg      %5d%5d%5d  %5.3f ", totStand.games, totStand.wins, totStand.losses, winpct(totStand));
+	if (printBenchmark) printf("(%5.1f-%5.1f)   %+5.1f\n", (float)totChamp.wins / (float)g_p.num_agents, (float)totChamp.losses / (float)g_p.num_agents, (float)((int)totChamp.wins-(int)totChamp.losses) / (float)g_p.num_agents);
+	else printf("\n");
 }
 
 //void print_standingsGPU(WON_LOSS *standings, WON_LOSS *vsChamp)

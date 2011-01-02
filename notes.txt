@@ -3,13 +3,13 @@ Today's Goals
 
 Must do:
 
-	Create a random move function on GPU
-		Have the opponent's wgts be randomized before every game
+	Test GPUs random move generator
 	
-	Do full-scale learning on GPU
-		warm-up vs. random
-		multiple episodes
-		compete against top 1/2
+	Fix standings spreadsheet to accomodate benchmark frequency
+	
+	On GPU - add multiple, simultaneous learning for each agent with sharing of results.
+		Learn vs. each opponent simultaneously, storing the change in weights to global memory
+		Calculate total change in weights accross all opponents and update agents weights with the total change
 
 Todo's
 

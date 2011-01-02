@@ -22,6 +22,18 @@ unsigned log2ui(unsigned x)
 	return result;
 }
 
+// bits needed to record numbers up to x-1
+unsigned bits_needed(unsigned x)
+{
+	unsigned v = 1;
+	unsigned result = 0;
+	while(v < x){
+		v *= 2;
+		++result;
+	}
+	return result;
+}
+
 // calculate the largest power of two less than x
 unsigned halfpow2(unsigned x)
 {

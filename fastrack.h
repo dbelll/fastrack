@@ -86,6 +86,7 @@ typedef struct {
 	unsigned state_size;		// 2 * board_size
 	unsigned half_board_size;	// biggest power of two less than board_size, used for reductions
 								// on the GPU
+	unsigned board_bits;		// number of bits needed to cover board_size, ie lg(board_size) rounded up
 	unsigned half_hidden;
 	float piece_ratioX;			// num_pieces / board_size
 	float piece_ratioO;			// num_pieces / (board_size - num_pieces)

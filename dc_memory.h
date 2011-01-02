@@ -17,11 +17,15 @@ __constant__ unsigned dc_num_pieces;
 __constant__ unsigned dc_state_size;
 __constant__ unsigned dc_board_size;
 __constant__ unsigned dc_half_board_size;
+__constant__ unsigned dc_board_bits;
 __constant__ unsigned dc_half_hidden;
 __constant__ unsigned dc_num_wgts;
 __constant__ unsigned dc_wgts_stride;
 __constant__ float dc_piece_ratioX;	// ratio of num_pieces to board_size
 __constant__ float dc_piece_ratioO;	// ratio of num_pieces to (board_size - num_pieces)
+
+__constant__ float dc_init_wgt_min;
+__constant__ float dc_init_wgt_max;
 
 // repitions to cover all weights
 // There are board_size number of threads and num_wgts number of weights.

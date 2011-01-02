@@ -11,3 +11,6 @@ unsigned log2ui(unsigned x);
 
 // calculate the largest power of 2 less than x
 unsigned halfpow2(unsigned x);
+
+// number of bits needed for numbers in the range [0, x)
+unsigned bits_needed(unsigned x);

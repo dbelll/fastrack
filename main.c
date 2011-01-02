@@ -101,6 +101,7 @@ PARAMS read_params(int argc, const char **argv)
 //	while (p.half_board_size < p.board_size) p.half_board_size <<= 1;
 //	p.half_board_size >>= 1;
 	p.half_board_size = halfpow2(p.board_size);
+	p.board_bits = bits_needed(p.board_size);
 	p.piece_ratioX = (float)p.num_pieces / (float)p.board_size;
 	p.piece_ratioO = (float)p.num_pieces / (float)(p.board_size - p.num_pieces);
 

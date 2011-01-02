@@ -446,6 +446,7 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_num_wgts", &g_p.num_wgts, sizeof(unsigned)));
 	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_wgts_stride", &g_p.wgts_stride, sizeof(unsigned)));
 	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_half_board_size", &g_p.half_board_size, sizeof(unsigned)));
+	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_board_bits", &g_p.board_bits, sizeof(unsigned)));
 	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_half_hidden", &g_p.half_hidden, sizeof(unsigned)));
 
 	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_max_turns", &g_p.max_turns, sizeof(unsigned)));
@@ -458,8 +459,12 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 	
 	float piece_ratioX = (float)g_p.num_pieces / (float)g_p.board_size;
 	float piece_ratioO = (float)g_p.num_pieces / (float)(g_p.board_size - g_p.num_pieces);
-	cudaMemcpyToSymbol("dc_piece_ratioX", &piece_ratioX, sizeof(float));
-	cudaMemcpyToSymbol("dc_piece_ratioO", &piece_ratioO, sizeof(float));
+	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_piece_ratioX", &piece_ratioX, sizeof(float)));
+	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_piece_ratioO", &piece_ratioO, sizeof(float)));
+
+	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_init_wgt_min", &g_p.init_wgt_min, sizeof(float)));
+	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_init_wgt_max", &g_p.init_wgt_max, sizeof(float)));
+	
 	printf("device constants:\n");
 	printf("   dc_num_hidden: %4d\n", g_p.num_hidden);
 	printf("   dc_num_pieces: %4d\n", g_p.num_pieces);
@@ -1179,6 +1184,13 @@ RESULTS *runCPU(AGENT *agCPU, float *champ_wgts)
 #pragma mark -
 #pragma mark GPU helpers
 
+// set wgts to random value
+__device__ void randomize_wgts(float *wgts, unsigned *s_seeds, unsigned stride)
+{
+	unsigned idx = threadIdx.x;
+	wgts[idx] = dc_init_wgt_min + (dc_init_wgt_max - dc_init_wgt_min) * RandUniform(s_seeds + idx, stride);
+}
+
 // Sum the values for a board, non-destructively
 // The total is stored in s_count[0]
 // Size of s_count must be at least dc_half_board_size
@@ -1489,6 +1501,56 @@ __device__ void update_traceGPU(unsigned *s_state, float *s_wgts, float *s_e, fl
 	__syncthreads();
 }
 
+// choose a random move for X
+__device__ void random_moveGPU(unsigned *s_state, unsigned *s_temp, unsigned *ps_terminal, float *ps_V, unsigned *s_seeds, unsigned stride)
+{
+	unsigned idx = threadIdx.x;
+	int iTo;
+	int iFrom;
+	
+	// check for terminal condition
+	rewardGPU(s_state, (unsigned *)s_temp, ps_terminal, ps_V);
+	if (*ps_terminal) return;
+
+	// use *ps_terminal to flag that we've found a legal move
+	*ps_terminal = 0;
+	while (!*ps_terminal) {
+		// each thread will choose a random move from its cell and then determine if its legal
+		if (X_BOARDGPU(s_state)[idx]) {
+			unsigned m = rand_num(MAX_MOVES, s_seeds, stride);
+			iTo = dc_moves[m * dc_board_size + idx];
+			if (iTo >= 0 && !X_BOARDGPU(s_state)[iTo]) {
+				// found a possible move, record <from> <to> and <rand_val> into one int in s_temp
+				s_temp[idx] = idx | (iTo << dc_board_bits) | (RandUniformui(s_seeds, stride) << (2*dc_board_bits));
+				*ps_terminal = 1;
+			}
+		}
+		__syncthreads();
+	}
+	
+	// do a reduction on s_temp and then decode the random move
+	unsigned half = dc_half_board_size;
+	if ((idx + half < dc_board_size) && (s_temp[idx] < s_temp[idx + half])) 
+		s_temp[idx] = s_temp[idx + half];
+	__syncthreads();
+	while (0 < (half >>= 1)) {
+		if ((idx < half) && (s_temp[idx] < s_temp[idx + half])) s_temp[idx] = s_temp[idx + half];
+		__syncthreads();
+	}
+	
+	if(idx == 0){
+		// decode the from and to cells
+		iFrom = s_temp[0] & ((1 << dc_board_bits) - 1);		// lowest dc_board_bits bits
+		iTo = (s_temp[0] >> dc_board_bits) & ((1 << dc_board_bits) -1);	// next dc_board_bits
+		
+		// do the move
+		X_BOARDGPU(s_state)[iFrom] = 0;
+		X_BOARDGPU(s_state)[iTo] = 1;
+		O_BOARDGPU(s_state)[iTo] = 0;
+	}
+	__syncthreads();
+}
+
 /*
 	Choose the next move for X.
 	The next move is the move with the highest value for the resulting state.
@@ -1576,6 +1638,13 @@ __device__ void take_actionGPU(unsigned *s_state, float *s_temp, float *s_owgts,
 		rewardGPU(s_state, (unsigned *)s_temp, ps_terminal, ps_reward);
 	}
 	__syncthreads();
+}
+
+// Player O makes a random move
+__device__ void take_random_actionGPU(unsigned *s_state, float *s_temp, float *s_owgts, float *s_hidden, float *s_out, unsigned *ps_terminal, float *s_ophidden, float *ps_reward, unsigned *s_seeds, unsigned s_stride)
+{
+	randomize_wgts(s_owgts, s_seeds, s_stride);
+	take_actionGPU(s_state, s_temp, s_owgts, s_hidden, s_out, ps_terminal, s_ophidden, ps_reward);
 }
 
 // copy all weights to the saved weights area
@@ -1743,14 +1812,16 @@ __global__ void learn_kernel(unsigned *seeds, float *wgts, float *e, float *opwg
 	s_seeds[idx + 2*dc_board_size] = seeds[iAgent * 4 * dc_board_size + idx + 2*dc_board_size];
 	s_seeds[idx + 3*dc_board_size] = seeds[iAgent * 4 * dc_board_size + idx + 3*dc_board_size];
 	
+	// copy agent weights to shared memory and reset eligibility trace
 	copy_wgts_to_s(wgts + iAgent * dc_wgts_stride, s_wgts);
-	copy_wgts_to_s(e + iAgent * dc_wgts_stride, s_e);
-	copy_wgts_to_s(opwgts, s_opwgts);
+	reset_traceGPU(s_e);
+
+	// copy opponent weights to shared memory, if given, otherwise create random agent
+	if (opwgts) copy_wgts_to_s(opwgts, s_opwgts);
 
 	unsigned turn = 0;
 	unsigned total_turns = 0;
 	
-	// skip this for testing so agent starts with the same initial state as CPU
 	random_stateGPU(s_state, s_temp, s_seeds, dc_board_size);
 
 	if (idx == 0){
@@ -1759,9 +1830,9 @@ __global__ void learn_kernel(unsigned *seeds, float *wgts, float *e, float *opwg
 	}
 	__syncthreads();
 
-//	if (dc_ag.next_to_play[iAgent]) {
 	if (s_rand < 0.50f){
-		take_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_terminal, s_ophidden, &s_reward);
+		if (opwgts) take_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_terminal, s_ophidden, &s_reward);
+		else take_random_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_terminal, s_ophidden, &s_reward, s_seeds, dc_board_size);
 		++turn;
 	}
 	__syncthreads();
@@ -1775,7 +1846,8 @@ __global__ void learn_kernel(unsigned *seeds, float *wgts, float *e, float *opwg
 	// exit 1
 	
 	while (total_turns++ < dc_episode_length) {
-		take_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_terminal, s_ophidden, &s_reward);
+		if (opwgts) take_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_terminal, s_ophidden, &s_reward);
+		else take_random_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_terminal, s_ophidden, &s_reward, s_seeds, dc_board_size);
 		++turn;
 		
 //		break;	// exit 2
@@ -1795,11 +1867,14 @@ __global__ void learn_kernel(unsigned *seeds, float *wgts, float *e, float *opwg
 			}
 			__syncthreads();			
 			random_stateGPU(s_state, s_temp, s_seeds, dc_board_size);
-
+			
 //			break;	// exit 6
 
 			if (s_rand < 0.50f) {
-				take_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_tempui, s_ophidden, &s_tempf);
+//				take_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_tempui, s_ophidden, &s_tempf);
+				if (opwgts) take_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_tempui, s_ophidden, &s_tempf);
+//				else take_random_actionGPU(s_seeds, s_temp, &s_tempui, &s_tempf, s_seeds, dc_board_size);
+				else take_actionGPU(s_state, s_temp, s_wgts, s_hidden, s_out, &s_tempui, s_ophidden, &s_tempf);
 				++turn;
 			}
 
@@ -1919,13 +1994,17 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 	if (g_p.warmup_length > 0) {
 		printf("GPU warm-up versus RAND\n");
 		unsigned save_num_pieces = g_p.num_pieces;
-		for (int p = 0; p <= save_num_pieces; p++) {
+		for (int p = 1; p <= save_num_pieces; p++) {
 			g_p.num_pieces = p;
+			CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_num_pieces", &g_p.num_pieces, sizeof(unsigned)));
+			printf(" %d ... ", p);
 			PRE_KERNEL("learn_kernel");
 			learn_kernel<<<gridDim, blockDim, dynamic_shared_mem()>>>(agGPU->seeds, agGPU->wgts, agGPU->e, NULL, NULL);
 			POST_KERNEL(learn_kernel);
 		}
 		g_p.num_pieces = save_num_pieces;
+		CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_num_pieces", &g_p.num_pieces, sizeof(unsigned)));
+		printf(" done\n");
 	}
 	cudaThreadSynchronize();
 	STOP_TIMER(gpuWarmupTimer, "GPU warm-up");
