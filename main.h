@@ -13,9 +13,7 @@
 	#define the value to enable it's corresponding output
 */
 
-//#define NO_OUTPUT			// define this symbol to turn off all debugging output
-
-#define GPUvCPU				// define this symbol to "fastrack GPUvCPU test"
+#define NO_OUTPUT			// define this symbol to turn off all debugging output
 
 
 #ifndef NO_OUTPUT
@@ -30,6 +28,8 @@
 #define DUMP_FINAL_AGENTS_CPU
 #define DUMP_FINAL_AGENTS_GPU
 //#define DUMP_CHAMP_WGTS
+
+#define DUMP_SAVED_WGTS 0				// 1 => dump saved weights, 0 => don't dump them
 
 #define AGENT_DUMP_BOARD_ONLY
 

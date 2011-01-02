@@ -3,16 +3,13 @@ Today's Goals
 
 Must do:
 
-//	Have random board generated on CPU and GPU at the start of each learning episode.
-
-	Create a random move function on GPU, matching the CPU version.
-
-	Compete kernel for GPU
+	Create a random move function on GPU
+		Have the opponent's wgts be randomized before every game
 	
 	Do full-scale learning on GPU
+		warm-up vs. random
 		multiple episodes
 		compete against top 1/2
-		
 
 Todo's
 

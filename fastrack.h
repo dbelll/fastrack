@@ -15,6 +15,7 @@
 #define MAX_STATE_SIZE MAX_BOARD_SIZE * 2
 
 #define LEARNING_LOG_FILE "standings.csv"
+#define LEARNING_LOG_FILE_GPU "standingsGPU.csv"
 #define AGENT_FILE_OUT "knight_out.agent"
 #define AGENT_FILE_CHAMP "knight57n4v11.agent"
 //#define CHAMP_GAMES 1000
@@ -75,6 +76,7 @@ typedef struct {
 	unsigned episode_length;	// number of time steps in each learning episode
 	unsigned warmup_length;		// number of time steps for initial training against RAND
 	unsigned benchmark_games;	// number of games to play vs. champ after each learning session
+	unsigned benchmark_freq;	// the frequency of running the benchmark, in number of sessions
 	
 	unsigned run_on_CPU;		// flags
 	unsigned run_on_GPU;
@@ -129,10 +131,10 @@ typedef struct{
 
 // structure to hold the won-loss record of a competition of learning episode for an agent
 typedef struct {
-	int agent;
-	int games;
-	int wins;
-	int losses;
+	unsigned agent;
+	unsigned games;
+	unsigned wins;
+	unsigned losses;
 } WON_LOSS;
 
 // RESULTS holds pointers to the results of the learning, which are always on the CPU
@@ -149,7 +151,7 @@ unsigned calc_wgts_stride(unsigned num_hidden, unsigned board_size);
 
 AGENT *init_agentsCPU(PARAMS p);
 AGENT *init_agentsGPU(AGENT *agCPU);
-void dump_agentsCPU(const char *str, AGENT *agCPU, unsigned dumpW);
+void dump_agentsCPU(const char *str, AGENT *agCPU, unsigned dumpW, unsigned dumpS);
 float *load_champ(const char *file);
 void save_agent(const char *file, AGENT *agCPU, unsigned iAg);
 
@@ -158,7 +160,9 @@ void freeAgentGPU(AGENT *ag);
 
 RESULTS *newResults(PARAMS *p);
 void dumpResults(RESULTS *ag);
+void dumpResultsGPU(RESULTS *ag);
 void freeResults(RESULTS *r);
+void freeResultsGPU(RESULTS *r);
 
 unsigned *start_state();
 void dump_state(unsigned *state);

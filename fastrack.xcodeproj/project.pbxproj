@@ -34,6 +34,8 @@
 		1064382012C3C9F000F6B78A /* CPUmoves */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = CPUmoves; sourceTree = "<group>"; };
 		106FF7F5119EE68B000CD6C8 /* Makefile */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.make; path = Makefile; sourceTree = "<group>"; };
 		106FF80D119EE7F5000CD6C8 /* main.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = main.c; sourceTree = "<group>"; };
+		1073075412CFE6090012BBE7 /* standingsGPU.csv */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = standingsGPU.csv; sourceTree = "<group>"; };
+		1073079312CFF13E0012BBE7 /* results.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = results.h; sourceTree = "<group>"; };
 		10A540AE12CBEADB00EC0531 /* knight57n4v11.agent */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = knight57n4v11.agent; sourceTree = "<group>"; };
 		10D4729412BCD1070018A3A5 /* misc_utils.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = misc_utils.c; sourceTree = "<group>"; };
 		10D4729512BCD1070018A3A5 /* misc_utils.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = misc_utils.h; sourceTree = "<group>"; };
@@ -62,10 +64,11 @@
 		10294D9B11A1B93300AAF551 /* source */ = {
 			isa = PBXGroup;
 			children = (
-				10E6B4E712CF85EF00674B57 /* in_output.h */,
 				10E6B4D512CF7B9B00674B57 /* board.h */,
-				10E6B4A712CF6DB100674B57 /* prototypes.h */,
 				10E6B46712CF65B000674B57 /* dc_memory.h */,
+				10E6B4E712CF85EF00674B57 /* in_output.h */,
+				10E6B4A712CF6DB100674B57 /* prototypes.h */,
+				1073079312CFF13E0012BBE7 /* results.h */,
 				10E6B4A412CF6CE800674B57 /* wgt_pointers.h */,
 				103C8AE912B6877200FE2066 /* main.h */,
 				106FF80D119EE7F5000CD6C8 /* main.c */,
@@ -111,6 +114,7 @@
 				101E1C9E12CBC3B800F89B36 /* knight_out.agent */,
 				10D473F212BD57EF0018A3A5 /* temp.agent */,
 				10D473C012BD1FDD0018A3A5 /* standings.csv */,
+				1073075412CFE6090012BBE7 /* standingsGPU.csv */,
 				103C8DA512B8197100FE2066 /* junk */,
 				103C8DC712B821A800FE2066 /* wgts.csv */,
 				103C904712BA32FB00FE2066 /* wins.csv */,
