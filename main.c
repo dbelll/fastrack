@@ -120,6 +120,7 @@ PARAMS read_params(int argc, const char **argv)
 	p.episode_length = GET_PARAM("EPISODE_LENGTH", 256);
 	p.warmup_length = GET_PARAM("WARMUP_LENGTH", 256);
 	p.benchmark_games = GET_PARAM("BENCHMARK_GAMES", 1000);
+	p.benchmark_freq = GET_PARAM("BENCHMARK_FREQ", 4);
 	
 	p.run_on_CPU = PARAM_PRESENT("CPU");
 	p.run_on_GPU = PARAM_PRESENT("GPU");
@@ -161,7 +162,7 @@ int main(int argc, const char **argv)
 	
 	// initialize agents on CPU and GPU
 	AGENT *agCPU = init_agentsCPU(p);
-//	dump_agentsCPU("after initialization", agCPU, 0);
+//	dump_agentsCPU("after initialization", agCPU, 0, 0);
 	AGENT *agGPU = NULL;
 	if (p.run_on_GPU) {
 		agGPU = init_agentsGPU(agCPU);
@@ -169,7 +170,7 @@ int main(int argc, const char **argv)
 
 	// load champ weights for benchmark testing
 	float *champ_wgts = load_champ(AGENT_FILE_CHAMP);
-//	dump_agentsCPU("after load_champ", agCPU, 0);
+//	dump_agentsCPU("after load_champ", agCPU, 0, 0);
 	
 	RESULTS *resultsCPU = NULL;
 	RESULTS *resultsGPU = NULL;
@@ -179,7 +180,7 @@ int main(int argc, const char **argv)
 	printf("done runs\n");
 
 	if (resultsCPU) dumpResults(resultsCPU);
-	if (resultsGPU) dumpResults(resultsGPU);
+	if (resultsGPU) dumpResultsGPU(resultsGPU);
 
 	printf("done dump results\n");
 	
@@ -193,5 +194,7 @@ int main(int argc, const char **argv)
 		printf("saving CPU agent\n");
 	} 
 	
+	freeResults(resultsCPU);
+	freeResultsGPU(resultsGPU);
 	return 0;
 }

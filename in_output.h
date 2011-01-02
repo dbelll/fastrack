@@ -7,33 +7,6 @@
  *
  */
 
-// Print sorted standings using the WON_LOSS information in standings (from learning vs. peers),
-// and vsChamp (from competing against benchmark agent).
-void print_standings(WON_LOSS *standings, WON_LOSS *vsChamp)
-{
-	qsort(standings, g_p.num_agents, sizeof(WON_LOSS), wl_compare);
-	printf(    "             G    W    L    PCT");
-	printf("   %4d games vs Champ\n", g_p.benchmark_games);
-	
-	WON_LOSS totChamp = {0, 0, 0, 0};
-	WON_LOSS totStand = {0, 0, 0, 0};
-	
-	for (int i = 0; i < g_p.num_agents; i++) {
-		//			printf("agent%4d  %4d %4d %4d  %5.3f", standings[i].agent, standings[i].games, standings[i].wins, standings[i].losses, 0.5f * (1.0f + (float)(standings[i].wins - standings[i].losses) / (float)standings[i].games));
-		printf("agent%4d  %4d %4d %4d  %5.3f", standings[i].agent, standings[i].games, standings[i].wins, standings[i].losses, winpct(standings[i]));
-		
-		totStand.games += standings[i].games;
-		totStand.wins += standings[i].wins;
-		totStand.losses += standings[i].losses;
-		
-		printf("  (%4d-%4d)    %+5d\n", vsChamp[standings[i].agent].wins,vsChamp[standings[i].agent].losses, vsChamp[standings[i].agent].wins - vsChamp[standings[i].agent].losses);
-		totChamp.games += vsChamp[standings[i].agent].games;
-		totChamp.wins += vsChamp[standings[i].agent].wins;
-		totChamp.losses += vsChamp[standings[i].agent].losses;
-	}
-	printf(" avg      %5d%5d%5d  %5.3f (%5.1f-%5.1f)   %+5.1f\n", totStand.games, totStand.wins, totStand.losses, winpct(totStand), (float)totChamp.wins / (float)g_p.num_agents, (float)totChamp.losses / (float)g_p.num_agents, (float)(totChamp.wins-totChamp.losses) / (float)g_p.num_agents);
-}
-
 // write the global parameters to a .CSV file
 void save_parameters(FILE *f)
 {
@@ -263,7 +236,7 @@ void dump_boardsGPU(unsigned *board, unsigned n)
 	free(boardsCPU);
 }
 
-void dump_agentsGPU(const char *str, AGENT *agGPU, unsigned dumpW)
+void dump_agentsGPU(const char *str, AGENT *agGPU, unsigned dumpW, unsigned dumpSaved)
 {
 	printf("dump_agentsGPU\n");
 	
@@ -276,7 +249,7 @@ void dump_agentsGPU(const char *str, AGENT *agGPU, unsigned dumpW)
 	agCPU->wgts = host_copyf(agGPU->wgts, g_p.num_agent_floats * g_p.num_agents);
 	set_agent_float_pointers(agCPU);
 	
-	dump_agentsCPU(str, agCPU, dumpW);
+	dump_agentsCPU(str, agCPU, dumpW, dumpSaved);
 	
 	freeAgentCPU(agCPU);
 }
@@ -343,7 +316,7 @@ void dump_all_wgts(float *wgts, unsigned num_hidden)
 	dump_wgts_BO(wgts);
 }
 
-void dump_agent(AGENT *agCPU, unsigned iag, unsigned dumpW)
+void dump_agent(AGENT *agCPU, unsigned iag, unsigned dumpW, unsigned dumpSaved)
 {
 #ifndef AGENT_DUMP_BOARD_ONLY
 	printf("[SEEDS], %10u, %10u %10u %10u\n", agCPU->seeds[iag], agCPU->seeds[iag + g_p.num_agents], agCPU->seeds[iag + 2 * g_p.num_agents], agCPU->seeds[iag + 3 * g_p.num_agents]);
@@ -367,6 +340,15 @@ void dump_agent(AGENT *agCPU, unsigned iag, unsigned dumpW)
 		dump_wgts_BO(pW);
 	}
 	
+	if (dumpSaved) {
+		dump_wgts_header("[savedwgts]");
+		float *pSaved = agCPU->saved_wgts + iag * g_p.wgts_stride;
+		dump_wgts_BH(pSaved);
+		for (int i = 0; i < g_p.state_size; i++) dump_wgts_IH(pSaved, i);
+		dump_wgts_HO(pSaved);
+		dump_wgts_BO(pSaved);
+	}
+	
 	printf("[   alpha], %9.4f\n", agCPU->alpha[iag]);
 	printf("[ epsilon], %9.4f\n", agCPU->epsilon[iag]);
 	printf("[  lambda], %9.4f\n", agCPU->lambda[iag]);
@@ -375,41 +357,16 @@ void dump_agent(AGENT *agCPU, unsigned iag, unsigned dumpW)
 }
 
 // dump all agents, flag controls if the eligibility trace values are also dumped
-void dump_agentsCPU(const char *str, AGENT *agCPU, unsigned dumpW)
+void dump_agentsCPU(const char *str, AGENT *agCPU, unsigned dumpW, unsigned dumpSaved)
 {
 	printf("======================================================================\n");
 	printf("%s\n", str);
 	printf("----------------------------------------------------------------------\n");
 	for (int i = 0; i < g_p.num_agents; i++) {
 		printf("\n[AGENT%5d] - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - \n", i);
-		dump_agent(agCPU, i, dumpW);
+		dump_agent(agCPU, i, dumpW, dumpSaved);
 	}
 	printf("======================================================================\n");
 	
-}
-
-
-#pragma mark -
-#pragma mark RESULTS functions
-void dumpResults(RESULTS *r)
-{
-	FILE *f = fopen(LEARNING_LOG_FILE, "w");
-	if (!f) {
-		printf("could not open the LEARNING_LOG_FILE %s\n", LEARNING_LOG_FILE);
-		return;
-	}
-	
-	save_parameters(f);
-	
-	// loop through each session and save the won-loss data to the LEARNING_LOG_FILE
-	for (int iSession = 0; iSession < g_p.num_sessions; iSession++) {
-		// sort the standings by agent number (vsChamp is already by agent number)
-		qsort(r->standings + iSession * g_p.num_agents, g_p.num_agents, sizeof(WON_LOSS), wl_byagent);
-		for (int iAg = 0; iAg < g_p.num_agents; iAg++) {
-			unsigned iStand = iSession * g_p.num_agents + iAg;
-			fprintf(f, "%d, %d, %d, %d, %d, %d, %d, %d\n", iSession, iAg, r->standings[iStand].games, r->standings[iStand].wins, r->standings[iStand].losses, r->vsChamp[iStand].games, r->vsChamp[iStand].wins, r->vsChamp[iStand].losses);
-		}
-	}
-	fclose(f);
 }
 
