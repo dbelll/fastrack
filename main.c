@@ -124,8 +124,10 @@ PARAMS read_params(int argc, const char **argv)
 	p.warmup_length = GET_PARAM("WARMUP_LENGTH", 256);
 	p.benchmark_games = GET_PARAM("BENCHMARK_GAMES", 1000);
 	p.benchmark_freq = GET_PARAM("BENCHMARK_FREQ", 4);
-	p.op_fraction = GET_PARAM("OP_FRACTION", 2);
-	p.num_opponents = p.num_agents / p.op_fraction;
+	p.num_opponents = GET_PARAM("NUM_OPPONENTS", p.num_agents > 4 ? 4 : p.num_agents);
+	p.half_opponents = halfpow2(p.num_opponents);
+	if (p.num_opponents > MAX_OPPONENTS) p.num_opponents = MAX_OPPONENTS;
+	p.op_fraction = p.num_agents / p.num_opponents;
 	
 	p.run_on_CPU = PARAM_PRESENT("CPU");
 	p.run_on_GPU = PARAM_PRESENT("GPU");

@@ -44,6 +44,8 @@
 
 #define MAX_MOVES 8			// the maximum number of possible moves in the piece move definitions
 
+#define MAX_OPPONENTS 32
+
 // macro for executing statement if variable show is true
 // use before printf or other output statements to only print when show is TRUE:
 // eg:		SHOW dump_state(state, turn, 1);
@@ -101,6 +103,8 @@ typedef struct {
 								// 2 ==> use 1/2 of agents, 4 ==> use 1/4, etc.
 	unsigned num_opponents;		// the number of opponents each session
 								// = num_agents / op_fraction
+	unsigned half_opponents;	// largest power of 2 less than num_opponents
+	unsigned best_opponents[MAX_OPPONENTS];	// maximum number of opponents
 	unsigned run_on_CPU;		// flags
 	unsigned run_on_GPU;
 	
@@ -127,6 +131,14 @@ typedef struct {
 } PARAMS;
 
 
+// structure to hold the won-loss record of a competition of learning episode for an agent
+typedef struct {
+	unsigned agent;
+	unsigned games;
+	unsigned wins;
+	unsigned losses;
+} WON_LOSS;
+
 // AGENT structure is used to consolidate the pointers to all agent data.  Pointers may be
 // all host pointers or all device pointers.
 typedef struct{
@@ -134,11 +146,14 @@ typedef struct{
 	float *wgts;		// nn wgts for each agent (num_agents * wgts_stride)
 	float *e;			// eligibility trace (num_agents * wgts_stride)
 	float *saved_wgts;	// saved copy of weights (num_agents * wgts_stride)
+	float *delta_wgts;	// change in weights over last learning episode (num_agents * num_opponents * num_wgts)
 	float *alpha;		// agent-specific alpha value (num_agents)
 	float *epsilon;		// agent-specific epsilon value (num_agents)
 	float *lambda;		// agent-specific lambda value (num_agents)
 	unsigned *states;		// saved state information (num_agents * state_size)
 	unsigned *next_to_play; // 0 ==> X, 1 ==> O (num_agents)
+	WON_LOSS *wl;		// temporary area to store won-loss information prior to reducing
+						// (num_agents * num_opponents * sizeof(WON_LOSS)
 } AGENT;
 
 //typedef struct {
@@ -152,14 +167,6 @@ typedef struct{
 //	unsigned iLambda;	// index in fData to lambda
 //} COMPACT_AGENT;
 
-
-// structure to hold the won-loss record of a competition of learning episode for an agent
-typedef struct {
-	unsigned agent;
-	unsigned games;
-	unsigned wins;
-	unsigned losses;
-} WON_LOSS;
 
 // RESULTS holds pointers to the results of the learning, which are always on the CPU
 typedef struct {

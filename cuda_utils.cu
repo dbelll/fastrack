@@ -191,7 +191,7 @@ void host_dumpf(const char *str, float *data, unsigned nRows, unsigned nCols)
 	for (int i = 0; i < nRows; i++) {
 		printf("[%4d]", i);
 		for (int j = 0; j < nCols; j++) {
-			printf("%10.3f", data[i * nCols + j]);
+			printf("%10.4f", data[i * nCols + j]);
 		}
 		printf("\n");
 	}
