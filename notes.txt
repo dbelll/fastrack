@@ -3,16 +3,9 @@ Today's Goals
 
 Must do:
 
-	Fix main to properly use results returned by runGPU save_agentGPU()
-
-	Add opponent fraction = the denominator of the fraction of agents that are used as opponents
-		2 ==> each learning session, agents compete against the best 1/2 of the other agents
-		4 ==>   "     "       "        "      "       "      "    "  1/4  "  "    "     "
-		etc.
-		
 	Fix standings spreadsheet to accomodate benchmark frequency
 	
-	On GPU - add multiple, simultaneous learning for each agent with sharing of results.
+>>>>>>	On GPU - add multiple, simultaneous learning for each agent with sharing of results.
 		Learn vs. each opponent simultaneously, storing the change in weights to global memory
 		Calculate total change in weights accross all opponents and update agents weights with the total change
 
