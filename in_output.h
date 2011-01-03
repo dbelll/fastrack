@@ -274,7 +274,7 @@ void save_agentsGPU(AGENT *d_agGPU, RESULTS *rGPU)
 	printf("save_agentsGPU\n");
 	AGENT *h_agGPU = copy_agents_to_host(d_agGPU);
 	
-	dump_agentsCPU("GPU agents", h_agGPU, 0, 0);
+//	dump_agentsCPU("GPU agents", h_agGPU, 0, 0);
 
 	WON_LOSS *lastStandings = (WON_LOSS *)malloc(g_p.num_agents * sizeof(WON_LOSS));
 	WON_LOSS *lastVsChamp = (WON_LOSS *)malloc(g_p.num_agents * sizeof(WON_LOSS));
@@ -312,7 +312,7 @@ void save_agentsCPU(AGENT *agCPU, RESULTS *resultsCPU)
 {
 	printf("save_agentsCPU\n");
 
-	dump_agentsCPU("CPU agents", agCPU, 0, 0);
+//	dump_agentsCPU("CPU agents", agCPU, 0, 0);
 	
 	unsigned iWinner = (g_p.num_sessions - 1) * g_p.num_agents;
 	

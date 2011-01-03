@@ -99,7 +99,8 @@ typedef struct {
 	unsigned benchmark_freq;	// the frequency of running the benchmark, in number of sessions
 	unsigned op_fraction;		// denominator of the fraction of agents that are used as opponents during learning
 								// 2 ==> use 1/2 of agents, 4 ==> use 1/4, etc.
-	
+	unsigned num_opponents;		// the number of opponents each session
+								// = num_agents / op_fraction
 	unsigned run_on_CPU;		// flags
 	unsigned run_on_GPU;
 	
