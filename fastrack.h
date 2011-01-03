@@ -134,6 +134,7 @@ typedef struct{
 	float *wgts;		// nn wgts for each agent (num_agents * wgts_stride)
 	float *e;			// eligibility trace (num_agents * wgts_stride)
 	float *saved_wgts;	// saved copy of weights (num_agents * wgts_stride)
+	float *delta_wgts;	// change in weights over last learning episode
 	float *alpha;		// agent-specific alpha value (num_agents)
 	float *epsilon;		// agent-specific epsilon value (num_agents)
 	float *lambda;		// agent-specific lambda value (num_agents)

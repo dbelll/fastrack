@@ -349,6 +349,7 @@ void freeAgentGPU(AGENT *ag)
 		if (ag->states) CUDA_SAFE_CALL(cudaFree(ag->states));
 		if (ag->next_to_play) CUDA_SAFE_CALL(cudaFree(ag->next_to_play));
 		if (ag->wgts) CUDA_SAFE_CALL(cudaFree(ag->wgts));
+		if (ag->delta_wgts) CUDA_SAFE_CALL(cudaFree(ag->delta_wgts));
 		CUDA_SAFE_CALL(cudaFree(ag));
 	}
 }
@@ -425,9 +426,12 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 	agGPU->wgts = device_copyf(agCPU->wgts, g_p.num_agent_floats * g_p.num_agents);
 	set_agent_float_pointers(agGPU);
 	
-	printf("agGPU->seeds %p\n", agGPU->seeds);
-	printf("agGPU->states %p\n", agGPU->states);
-	printf("agGPU->wgts %p\n", agGPU->wgts);
+//	printf("agGPU->seeds %p\n", agGPU->seeds);
+//	printf("agGPU->states %p\n", agGPU->states);
+//	printf("agGPU->wgts %p\n", agGPU->wgts);
+
+	// allocate room on device for saving delta wgts
+	agGPU->delta_wgts = device_allocf(g_p.num_agents * g_p.num_opponents * g_p.num_wgts);
 	
 	int *d_g_moves = device_copyi(g_moves, g_p.board_size * MAX_MOVES);
 	
@@ -439,6 +443,8 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 	// copy parameter values to constant memory
 	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_ag", agGPU, sizeof(AGENT)));
 	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_gamma", &g_p.gamma, sizeof(float)));
+	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_num_agents", &g_p.num_agents, sizeof(unsigned)));
+	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_num_opponents", &g_p.num_opponents, sizeof(unsigned)));
 	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_num_hidden", &g_p.num_hidden, sizeof(unsigned)));
 	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_num_pieces", &g_p.num_pieces, sizeof(unsigned)));
 	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_state_size", &g_p.state_size, sizeof(unsigned)));
@@ -1392,6 +1398,27 @@ __device__ void copy_wgts_to_g(float *s_wgts, float *g_wgts)
 	__syncthreads();
 }
 
+// calculate the difference between the old weights (in global memory) and the new weights
+// (in shared memory) and store the difference in global memory (in compact format) at delta_wgts
+__device__ void calc_delta_wgts(float *new_wgts, float *old_wgts, float *delta_wgts)
+{
+	unsigned idx = threadIdx.x;
+	for (int iH = 0; iH < dc_num_hidden; iH++) {
+		S_IXH(delta_wgts, iH)[idx] = S_IXH(new_wgts, iH)[idx] - G_IXH(old_wgts, iH)[idx];
+		S_IOH(delta_wgts, iH)[idx] = S_IOH(new_wgts, iH)[idx] - G_IOH(old_wgts, iH)[idx];
+	}
+	
+	if (idx < dc_num_hidden) {
+		S_BH(delta_wgts)[idx] = S_BH(new_wgts)[idx] - G_BH(old_wgts)[idx];
+		S_HO(delta_wgts)[idx] = S_HO(new_wgts)[idx] - G_HO(old_wgts)[idx];
+	}
+
+	if (idx == 0) {
+		S_BO(delta_wgts)[idx] = S_BO(new_wgts)[idx] - G_BO(old_wgts)[idx];
+	}
+	__syncthreads();
+}
+
 
 #pragma mark -
 #pragma mark GPU code
@@ -1756,7 +1783,6 @@ __global__ void compete_kernel(unsigned *seeds, float *wgts, float *opwgts, WON_
 
 }
 
-
 /*
 	Run an episode of learning against a static opponent
 	
@@ -1764,13 +1790,25 @@ __global__ void compete_kernel(unsigned *seeds, float *wgts, float *opwgts, WON_
 	ag2_wgts contains the weights for the opponent
 
 	blockIdx.x is the agent number for the learner
+	blockIdx.y is the index for the opponent:  On the first run, wl_prev will be NULL and the
+	opponent index is the agent number.  On 2nd and later runs, wl_prev will contain the previous
+	standings and the opponent index is index for wl_prev.
 	
 	*** Requires board_size threads ***
 */
-__global__ void learn_kernel(unsigned *seeds, float *wgts, float *e, float *opwgts, WON_LOSS *wl)
+__global__ void learn_kernel(unsigned *seeds, float *wgts, float *e, float *saved_wgts, WON_LOSS *wl_prev, WON_LOSS *wl, float *delta_wgts)
 {
 	unsigned idx = threadIdx.x;
 	unsigned iAgent = blockIdx.x;
+	
+	// Lookup up opponent in the previous standings, if given, otherwise just use as offset from self
+	unsigned iOpponent;
+	if (wl_prev) {
+		iOpponent = wl_prev[blockIdx.y].agent;
+	}else {
+		iOpponent = iAgent + blockIdx.y;
+		if (iOpponent >= dc_num_agents) iOpponent -= dc_num_agents;
+	}
 	
 	// static shared memory
 	__shared__ float s_rand;
@@ -1820,8 +1858,9 @@ __global__ void learn_kernel(unsigned *seeds, float *wgts, float *e, float *opwg
 	copy_wgts_to_s(wgts + iAgent * dc_wgts_stride, s_wgts);
 	reset_traceGPU(s_e);
 
-	// copy opponent weights to shared memory, if given, otherwise create random agent
-	if (opwgts) copy_wgts_to_s(opwgts, s_opwgts);
+	// copy opponent weights to shared memory, if given, otherwise will use random agent
+//	if (opwgts) copy_wgts_to_s(opwgts, s_opwgts);
+	if (saved_wgts) copy_wgts_to_s(saved_wgts + iOpponent * dc_wgts_stride, s_opwgts);
 
 	unsigned turn = 0;
 	unsigned total_turns = 0;
@@ -1835,7 +1874,7 @@ __global__ void learn_kernel(unsigned *seeds, float *wgts, float *e, float *opwg
 	__syncthreads();
 
 	if (s_rand < 0.50f){
-		if (opwgts) take_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_terminal, s_ophidden, &s_reward);
+		if (saved_wgts) take_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_terminal, s_ophidden, &s_reward);
 		else take_random_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_terminal, s_ophidden, &s_reward, s_seeds, dc_board_size);
 		++turn;
 	}
@@ -1850,7 +1889,7 @@ __global__ void learn_kernel(unsigned *seeds, float *wgts, float *e, float *opwg
 	// exit 1
 	
 	while (total_turns++ < dc_episode_length) {
-		if (opwgts) take_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_terminal, s_ophidden, &s_reward);
+		if (saved_wgts) take_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_terminal, s_ophidden, &s_reward);
 		else take_random_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_terminal, s_ophidden, &s_reward, s_seeds, dc_board_size);
 		++turn;
 		
@@ -1876,7 +1915,7 @@ __global__ void learn_kernel(unsigned *seeds, float *wgts, float *e, float *opwg
 
 			if (s_rand < 0.50f) {
 //				take_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_tempui, s_ophidden, &s_tempf);
-				if (opwgts) take_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_tempui, s_ophidden, &s_tempf);
+				if (saved_wgts) take_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_tempui, s_ophidden, &s_tempf);
 //				else take_random_actionGPU(s_seeds, s_temp, &s_tempui, &s_tempf, s_seeds, dc_board_size);
 				else take_actionGPU(s_state, s_temp, s_wgts, s_hidden, s_out, &s_tempui, s_ophidden, &s_tempf);
 				++turn;
@@ -1928,8 +1967,11 @@ __global__ void learn_kernel(unsigned *seeds, float *wgts, float *e, float *opwg
 	dc_ag.seeds[iAgent * dc_board_size * 4 + idx + 2*dc_board_size] = s_seeds[idx + 2*dc_board_size];
 	dc_ag.seeds[iAgent * dc_board_size * 4 + idx + 3*dc_board_size] = s_seeds[idx + 3*dc_board_size];
 
-	copy_wgts_to_g(s_wgts, wgts + iAgent * dc_wgts_stride);
-	copy_wgts_to_g(s_e, e + iAgent * dc_wgts_stride);
+	copy_wgts_to_g(s_wgts, wgts + iAgent * dc_wgts_stride);	// only neeeded for debugging
+	copy_wgts_to_g(s_e, e + iAgent * dc_wgts_stride);		// only needed for debugging
+	
+	// caclulate delta_wgts and store in global memory
+	calc_delta_wgts(s_wgts, saved_wgts + iAgent * dc_wgts_stride, delta_wgts + iAgent * dc_num_wgts * dc_num_opponents + blockIdx.y * dc_num_wgts);
 
 	// accumulate the won/loss record in global memory 
 	if (idx == 0 && wl) {
@@ -1993,25 +2035,25 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 		gridDim_wgtCopy.x = 1 + (g_p.wgts_stride - 1) / 512;
 	}
 	
-	// warm-up vs. random agent
-	START_TIMER(gpuWarmupTimer);
-	if (g_p.warmup_length > 0) {
-		printf("GPU warm-up versus RAND\n");
-		unsigned save_num_pieces = g_p.num_pieces;
-		for (int p = 1; p <= save_num_pieces; p++) {
-			g_p.num_pieces = p;
-			CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_num_pieces", &g_p.num_pieces, sizeof(unsigned)));
-			printf(" %d ... ", p);
-			PRE_KERNEL("learn_kernel");
-			learn_kernel<<<gridDim, blockDim, dynamic_shared_mem()>>>(agGPU->seeds, agGPU->wgts, agGPU->e, NULL, NULL);
-			POST_KERNEL(learn_kernel);
-		}
-		g_p.num_pieces = save_num_pieces;
-		CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_num_pieces", &g_p.num_pieces, sizeof(unsigned)));
-		printf(" done\n");
-	}
-	cudaThreadSynchronize();
-	STOP_TIMER(gpuWarmupTimer, "GPU warm-up");
+//	// warm-up vs. random agent
+//	START_TIMER(gpuWarmupTimer);
+//	if (g_p.warmup_length > 0) {
+//		printf("GPU warm-up versus RAND\n");
+//		unsigned save_num_pieces = g_p.num_pieces;
+//		for (int p = 1; p <= save_num_pieces; p++) {
+//			g_p.num_pieces = p;
+//			CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_num_pieces", &g_p.num_pieces, sizeof(unsigned)));
+//			printf(" %d ... ", p);
+//			PRE_KERNEL("learn_kernel");
+//			learn_kernel<<<gridDim, blockDim, dynamic_shared_mem()>>>(agGPU->seeds, agGPU->wgts, agGPU->e, NULL, NULL);
+//			POST_KERNEL(learn_kernel);
+//		}
+//		g_p.num_pieces = save_num_pieces;
+//		CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_num_pieces", &g_p.num_pieces, sizeof(unsigned)));
+//		printf(" done\n");
+//	}
+//	cudaThreadSynchronize();
+//	STOP_TIMER(gpuWarmupTimer, "GPU warm-up");
 	
 	START_TIMER(gpuLearnTimer);
 	PAUSE_TIMER(gpuLearnTimer);
@@ -2044,9 +2086,19 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 			POST_KERNEL(learn_kernel);		
 		}
 
-		cudaThreadSynchronize();
-		PAUSE_TIMER(gpuLearnTimer);
-	
+		// learn against other agents simultaneously
+//		dim3 learnBlockDim(g_p.board_size);
+//		dim3 learnGridDim(g_p.num_agents, g_p.num_opponents);
+//		
+//		PRE_KERNEL2("learn_kernel", learnBlockDim, learnGridDim);
+//		learn_kernel<<<learnGridDim, learnBlockDim, dynamic_shared_mem()>>>(agGPU->seeds, agGPU->wgts, agGPU->e, agGPU->saved_wgts, (iSession > 0) ? rGPU->standings + (iSession-1)*g_p.num_agents : NULL, rGPU->standings + iSession * g_p.num_agents, agGPU->delta_wgts);
+//		POST_KERNEL(learn_kernel);
+//
+//		cudaThreadSynchronize();
+//		PAUSE_TIMER(gpuLearnTimer);
+//	
+//		device_dumpf("delta_wgts", agGPU->delta_wgts, g_p.num_agents * g_p.num_opponents, g_p.num_wgts);
+		
 		// compete against benchmark opponent, storing the results vsChamp array of rGPU results structure
 		RESUME_TIMER(gpuCompeteTimer);
 		if (g_p.benchmark_games > 0 && 0 == ((1+iSession) % g_p.benchmark_freq)) {

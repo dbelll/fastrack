@@ -12,6 +12,8 @@
 __constant__ AGENT dc_ag;
 
 __constant__ float dc_gamma;
+__constant__ unsigned dc_num_agents;
+__constant__ unsigned dc_num_opponents;
 __constant__ unsigned dc_num_hidden;
 __constant__ unsigned dc_num_pieces;
 __constant__ unsigned dc_state_size;
