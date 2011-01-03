@@ -122,13 +122,29 @@ void dumpResults(RESULTS *r)
 //	printf("done.\n");
 }
 
+WON_LOSS *copy_standings_to_CPU(RESULTS *rGPU)
+{
+	WON_LOSS *standings = (WON_LOSS *)malloc(g_p.num_sessions * g_p.num_agents * sizeof(WON_LOSS));
+	CUDA_SAFE_CALL(cudaMemcpy(standings, rGPU->standings, g_p.num_sessions * g_p.num_agents * sizeof(WON_LOSS), cudaMemcpyDeviceToHost));
+	return standings;
+}
+
+WON_LOSS *copy_vsChamp_to_CPU(RESULTS *rGPU)
+{
+	WON_LOSS *vsChamp = (WON_LOSS *)malloc(g_p.num_sessions * g_p.num_agents * sizeof(WON_LOSS));
+	CUDA_SAFE_CALL(cudaMemcpy(vsChamp, rGPU->vsChamp, g_p.num_sessions * g_p.num_agents * sizeof(WON_LOSS), cudaMemcpyDeviceToHost));
+	return vsChamp;
+}
+
 void dumpResultsGPU(RESULTS *rGPU)
 {
 	// copy the standings and vsChamps values to host memory
-	WON_LOSS *standings = (WON_LOSS *)malloc(g_p.num_sessions * g_p.num_agents * sizeof(WON_LOSS));
-	WON_LOSS *vsChamp = (WON_LOSS *)malloc(g_p.num_sessions * g_p.num_agents * sizeof(WON_LOSS));
-	CUDA_SAFE_CALL(cudaMemcpy(standings, rGPU->standings, g_p.num_sessions * g_p.num_agents * sizeof(WON_LOSS), cudaMemcpyDeviceToHost));
-	CUDA_SAFE_CALL(cudaMemcpy(vsChamp, rGPU->vsChamp, g_p.num_sessions * g_p.num_agents * sizeof(WON_LOSS), cudaMemcpyDeviceToHost));
+//	WON_LOSS *standings = (WON_LOSS *)malloc(g_p.num_sessions * g_p.num_agents * sizeof(WON_LOSS));
+//	WON_LOSS *vsChamp = (WON_LOSS *)malloc(g_p.num_sessions * g_p.num_agents * sizeof(WON_LOSS));
+//	CUDA_SAFE_CALL(cudaMemcpy(standings, rGPU->standings, g_p.num_sessions * g_p.num_agents * sizeof(WON_LOSS), cudaMemcpyDeviceToHost));
+//	CUDA_SAFE_CALL(cudaMemcpy(vsChamp, rGPU->vsChamp, g_p.num_sessions * g_p.num_agents * sizeof(WON_LOSS), cudaMemcpyDeviceToHost));
+	WON_LOSS *standings = copy_standings_to_CPU(rGPU);
+	WON_LOSS *vsChamp = copy_vsChamp_to_CPU(rGPU);
 	
 	FILE *f = fopen(LEARNING_LOG_FILE_GPU, "w");
 	if (!f) {

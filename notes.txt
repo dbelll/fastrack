@@ -3,6 +3,8 @@ Today's Goals
 
 Must do:
 
+	Fix main to properly use results returned by runGPU save_agentGPU()
+
 	Add opponent fraction = the denominator of the fraction of agents that are used as opponents
 		2 ==> each learning session, agents compete against the best 1/2 of the other agents
 		4 ==>   "     "       "        "      "       "      "    "  1/4  "  "    "     "

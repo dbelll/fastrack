@@ -17,3 +17,6 @@ int wl_byagent(const void *p1, const void *p2);
 float winpct(WON_LOSS wl);
 void set_agent_float_pointers(AGENT *ag);
 
+void dump_agent(AGENT *agCPU, unsigned iag, unsigned dumpW, unsigned dumpSaved);
+WON_LOSS *copy_standings_to_CPU(RESULTS *rGPU);
+void print_standings(WON_LOSS *standings, WON_LOSS *vsChamp);

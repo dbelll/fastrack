@@ -11,7 +11,6 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		101E1C9E12CBC3B800F89B36 /* knight_out.agent */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = knight_out.agent; sourceTree = "<group>"; };
 		10294C5011A1A01400AAF551 /* fastrack.cu */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cuda; path = fastrack.cu; sourceTree = "<group>"; };
 		10294C5111A1A01400AAF551 /* fastrack.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = fastrack.h; sourceTree = "<group>"; };
 		10294D4211A1B49500AAF551 /* profile_config */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = profile_config; sourceTree = "<group>"; };
@@ -31,6 +30,16 @@
 		103C920312BB0A4400FE2066 /* play.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = play.c; sourceTree = "<group>"; };
 		103CE4E312C38538003DBEC7 /* cuda_utils.cu */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cuda; path = cuda_utils.cu; sourceTree = "<group>"; };
 		103CE4E412C38538003DBEC7 /* cuda_utils.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = cuda_utils.h; sourceTree = "<group>"; };
+		1059C55C12D10BD800A1EBE6 /* knight57n4v15.agent */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = knight57n4v15.agent; sourceTree = "<group>"; };
+		1059C5A612D1E69E00A1EBE6 /* knight_GPU1.agent */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = knight_GPU1.agent; sourceTree = "<group>"; };
+		1059C5D712D1ECC800A1EBE6 /* CPU0.agent */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = CPU0.agent; sourceTree = "<group>"; };
+		1059C5D812D1ECC800A1EBE6 /* CPU1.agent */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = CPU1.agent; sourceTree = "<group>"; };
+		1059C5D912D1ECC800A1EBE6 /* CPU2.agent */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = CPU2.agent; sourceTree = "<group>"; };
+		1059C5DA12D1ECC800A1EBE6 /* CPU3.agent */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = CPU3.agent; sourceTree = "<group>"; };
+		1059C5DB12D1ECC800A1EBE6 /* GPU0.agent */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = GPU0.agent; sourceTree = "<group>"; };
+		1059C5DC12D1ECC800A1EBE6 /* GPU1.agent */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = GPU1.agent; sourceTree = "<group>"; };
+		1059C5DD12D1ECC800A1EBE6 /* GPU2.agent */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = GPU2.agent; sourceTree = "<group>"; };
+		1059C5DE12D1ECC800A1EBE6 /* GPU3.agent */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = GPU3.agent; sourceTree = "<group>"; };
 		1064382012C3C9F000F6B78A /* CPUmoves */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = CPUmoves; sourceTree = "<group>"; };
 		106FF7F5119EE68B000CD6C8 /* Makefile */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.make; path = Makefile; sourceTree = "<group>"; };
 		106FF80D119EE7F5000CD6C8 /* main.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = main.c; sourceTree = "<group>"; };
@@ -110,8 +119,6 @@
 			isa = PBXGroup;
 			children = (
 				103C8E3A12B8D51900FE2066 /* notes.txt */,
-				10A540AE12CBEADB00EC0531 /* knight57n4v11.agent */,
-				101E1C9E12CBC3B800F89B36 /* knight_out.agent */,
 				10D473F212BD57EF0018A3A5 /* temp.agent */,
 				10D473C012BD1FDD0018A3A5 /* standings.csv */,
 				1073075412CFE6090012BBE7 /* standingsGPU.csv */,
@@ -133,9 +140,28 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		1059C5D612D1ECAE00A1EBE6 /* agents */ = {
+			isa = PBXGroup;
+			children = (
+				1059C5D712D1ECC800A1EBE6 /* CPU0.agent */,
+				1059C5D812D1ECC800A1EBE6 /* CPU1.agent */,
+				1059C5D912D1ECC800A1EBE6 /* CPU2.agent */,
+				1059C5DA12D1ECC800A1EBE6 /* CPU3.agent */,
+				1059C5DB12D1ECC800A1EBE6 /* GPU0.agent */,
+				1059C5DC12D1ECC800A1EBE6 /* GPU1.agent */,
+				1059C5DD12D1ECC800A1EBE6 /* GPU2.agent */,
+				1059C5DE12D1ECC800A1EBE6 /* GPU3.agent */,
+				1059C5A612D1E69E00A1EBE6 /* knight_GPU1.agent */,
+				10A540AE12CBEADB00EC0531 /* knight57n4v11.agent */,
+				1059C55C12D10BD800A1EBE6 /* knight57n4v15.agent */,
+			);
+			name = agents;
+			sourceTree = "<group>";
+		};
 		106FF7E9119EE654000CD6C8 = {
 			isa = PBXGroup;
 			children = (
+				1059C5D612D1ECAE00A1EBE6 /* agents */,
 				103C8E3212B8D33800FE2066 /* notes and results */,
 				103C8AEA12B687C200FE2066 /* utilities */,
 				10294D9B11A1B93300AAF551 /* source */,

@@ -53,15 +53,15 @@ void save_agent(const char *file, AGENT *ag, unsigned iAg)
 	//	}
 	
 	// B->H
-	for (int iH = 0; iH < g_p.num_hidden; iH++) fprintf(f, "%f\n", gBH(ag->wgts, iH));
+	for (int iH = 0; iH < g_p.num_hidden; iH++) fprintf(f, "%f\n", gBH(AG_WGTS(ag, iAg), iH));
 	// I->H
 	for (int iI = 0; iI < g_p.state_size; iI++)
 		for (int iH = 0; iH < g_p.num_hidden; iH++) 
-			fprintf(f, "%f\n", gIH(ag->wgts, iI, iH));
+			fprintf(f, "%f\n", gIH(AG_WGTS(ag, iAg), iI, iH));
 	// H->O
-	for (int iH = 0; iH < g_p.num_hidden; iH++) fprintf(f, "%f\n", gHO(ag->wgts, iH));
+	for (int iH = 0; iH < g_p.num_hidden; iH++) fprintf(f, "%f\n", gHO(AG_WGTS(ag, iAg), iH));
 	// B->O
-	fprintf(f, "%f\n", gBO(ag->wgts));
+	fprintf(f, "%f\n", gBO(AG_WGTS(ag, iAg)));
 	
 	fclose(f);
 }
@@ -236,10 +236,8 @@ void dump_boardsGPU(unsigned *board, unsigned n)
 	free(boardsCPU);
 }
 
-void dump_agentsGPU(const char *str, AGENT *agGPU, unsigned dumpW, unsigned dumpSaved)
+AGENT *copy_agents_to_host(AGENT *agGPU)
 {
-	printf("dump_agentsGPU\n");
-	
 	// create a CPU copy of the GPU agent data
 	AGENT *agCPU = (AGENT *)malloc(sizeof(AGENT));
 	
@@ -249,9 +247,87 @@ void dump_agentsGPU(const char *str, AGENT *agGPU, unsigned dumpW, unsigned dump
 	agCPU->wgts = host_copyf(agGPU->wgts, g_p.num_agent_floats * g_p.num_agents);
 	set_agent_float_pointers(agCPU);
 	
-	dump_agentsCPU(str, agCPU, dumpW, dumpSaved);
+	return agCPU;
+}
+
+void dump_agentsGPU(const char *str, AGENT *agGPU, unsigned dumpW, unsigned dumpSaved)
+{
+	printf("dump_agentsGPU\n");
 	
+//	// create a CPU copy of the GPU agent data
+//	AGENT *agCPU = (AGENT *)malloc(sizeof(AGENT));
+//	
+//	agCPU->seeds = host_copyui(agGPU->seeds, 4 * g_p.num_agents * g_p.board_size);
+//	agCPU->states = host_copyui(agGPU->states, g_p.num_agents * g_p.state_size);
+//	agCPU->next_to_play = host_copyui(agGPU->next_to_play, g_p.num_agents);
+//	agCPU->wgts = host_copyf(agGPU->wgts, g_p.num_agent_floats * g_p.num_agents);
+//	set_agent_float_pointers(agCPU);
+	
+	AGENT *agCPU = copy_agents_to_host(agGPU);
+	dump_agentsCPU(str, agCPU, dumpW, dumpSaved);
 	freeAgentCPU(agCPU);
+}
+
+// save GPU agent data to file
+void save_agentsGPU(AGENT *d_agGPU, RESULTS *rGPU)
+{
+	printf("save_agentsGPU\n");
+	AGENT *h_agGPU = copy_agents_to_host(d_agGPU);
+	
+	dump_agentsCPU("GPU agents", h_agGPU, 0, 0);
+
+	WON_LOSS *lastStandings = (WON_LOSS *)malloc(g_p.num_agents * sizeof(WON_LOSS));
+	WON_LOSS *lastVsChamp = (WON_LOSS *)malloc(g_p.num_agents * sizeof(WON_LOSS));
+
+	// copy the standings back to host memory and print them out (which causes the standings to be sorted)
+	CUDA_SAFE_CALL(cudaMemcpy(lastStandings, rGPU->standings + (g_p.num_sessions-1) * g_p.num_agents, g_p.num_agents * sizeof(WON_LOSS), cudaMemcpyDeviceToHost));
+	CUDA_SAFE_CALL(cudaMemcpy(lastVsChamp, rGPU->vsChamp + (g_p.num_sessions-1) * g_p.num_agents, g_p.num_agents * sizeof(WON_LOSS), cudaMemcpyDeviceToHost));
+	print_standings(lastStandings, lastVsChamp);
+	
+	
+#ifdef AGFILE_GPU0
+	printf("saving agent %d who came in 1st ...\n", lastStandings[0].agent);
+	save_agent(AGFILE_GPU0, h_agGPU, lastStandings[0].agent);
+#endif
+#ifdef AGFILE_GPU1
+	printf("saving agent %d who came in 2nd ...\n", lastStandings[1].agent);
+	save_agent(AGFILE_GPU1, h_agGPU, lastStandings[1].agent);
+#endif
+#ifdef AGFILE_GPU2
+	printf("saving agent %d who came in 3rd ...\n", lastStandings[2].agent);
+	save_agent(AGFILE_GPU2, h_agGPU, lastStandings[2].agent);
+#endif
+#ifdef AGFILE_GPU3
+	printf("saving agent %d who came in 4th ...\n", lastStandings[3].agent);
+	save_agent(AGFILE_GPU3, h_agGPU, lastStandings[3].agent);
+#endif
+	
+	free(lastStandings);
+	free(lastVsChamp);
+	freeAgentCPU(h_agGPU);
+}
+
+// save GPU agent data to file
+void save_agentsCPU(AGENT *agCPU, RESULTS *resultsCPU)
+{
+	printf("save_agentsCPU\n");
+
+	dump_agentsCPU("CPU agents", agCPU, 0, 0);
+	
+	unsigned iWinner = (g_p.num_sessions - 1) * g_p.num_agents;
+	
+#ifdef AGFILE_GPU0
+	save_agent(AGFILE_CPU0, agCPU, resultsCPU->standings[iWinner].agent);
+#endif
+#ifdef AGFILE_GPU1
+	save_agent(AGFILE_CPU1, agCPU, resultsCPU->standings[iWinner + 1].agent);
+#endif
+#ifdef AGFILE_GPU2
+	save_agent(AGFILE_CPU2, agCPU, resultsCPU->standings[iWinner + 2].agent);
+#endif
+#ifdef AGFILE_GPU3
+	save_agent(AGFILE_CPU3, agCPU, resultsCPU->standings[iWinner + 3].agent);
+#endif
 }
 
 void dump_statesGPU(unsigned *state, unsigned n)

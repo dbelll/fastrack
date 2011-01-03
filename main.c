@@ -188,15 +188,9 @@ int main(int argc, const char **argv)
 
 	printf("done dump results\n");
 	
-	// Save best agent to file from GPU run, or if no GPU run, from the CPU run
-	if(p.run_on_GPU && resultsGPU){
-		save_agent(AGENT_FILE_OUT, agGPU, resultsGPU->iBest);
-		printf("saving GPU agent\n");
-	} 
-	else if (p.run_on_CPU && resultsCPU){
-		save_agent(AGENT_FILE_OUT, agCPU, resultsCPU->iBest);
-		printf("saving CPU agent\n");
-	} 
+	// Save best agents to file
+	if (p.run_on_CPU && resultsCPU) save_agentsCPU(agCPU, resultsCPU);
+	if (p.run_on_GPU && resultsGPU) save_agentsGPU(agGPU, resultsGPU);
 	
 	freeResults(resultsCPU);
 	freeResultsGPU(resultsGPU);

@@ -16,9 +16,18 @@
 
 #define LEARNING_LOG_FILE "standings.csv"
 #define LEARNING_LOG_FILE_GPU "standingsGPU.csv"
-#define AGENT_FILE_OUT "knight_out.agent"
+
+#define AGFILE_GPU0 "GPU0.agent"		// filename for saved agent data
+#define AGFILE_GPU1 "GPU1.agent"
+#define AGFILE_GPU2 "GPU2.agent"
+#define AGFILE_GPU3 "GPU3.agent"
+
+#define AGFILE_CPU0 "CPU0.agent"
+#define AGFILE_CPU1 "CPU1.agent"
+#define AGFILE_CPU2 "CPU2.agent"
+#define AGFILE_CPU3 "CPU3.agent"
+
 #define AGENT_FILE_CHAMP "knight57n4v11.agent"
-//#define CHAMP_GAMES 1000
 
 #define REWARD_WIN 1.00f
 #define REWARD_LOSS 0.00f
@@ -46,6 +55,17 @@
 
 #define X_BOARDGPU(state) (state)
 #define O_BOARDGPU(state) ((state) + dc_board_size)
+
+// macros to access one agent's values
+#define AG_SEEDS(ag, iAg) (ag->seeds + iAg * 4 * g_p.board_size)
+#define AG_WGTS(ag, iAg) (ag->wgts + iAg * g_p.wgts_stride)
+#define AG_E(ag, iAg) (ag->e + iAg * g_p.wgts_stride)
+#define AG_SAVED_WGTS(ag, iAg) (ag->saved_wgts + iAg * g_p.wgts_stride)
+#define AG_ALPHA(ag, iAg) (ag->alpha + iAg)
+#define AG_epsilon(ag, iAg) (ag->epsilon + iAg)
+#define AG_LAMBDA(ag, iAg) (ag->lambda + iAg)
+#define AG_STATE(ag, iAg) (ag->states + iAg * g_p.state_size)
+#define AG_NEXT(ag, iAg) (ag->next_to_play + iAg * g_p.wgts_stride)
 
 #define NAME_BUFF_SIZE 16	// buffer size for agent names
 
@@ -156,7 +176,8 @@ AGENT *init_agentsCPU(PARAMS p);
 AGENT *init_agentsGPU(AGENT *agCPU);
 void dump_agentsCPU(const char *str, AGENT *agCPU, unsigned dumpW, unsigned dumpS);
 float *load_champ(const char *file);
-void save_agent(const char *file, AGENT *agCPU, unsigned iAg);
+void save_agentsCPU(AGENT *agCPU, RESULTS *rCPU);
+void save_agentsGPU(AGENT *agGPU, RESULTS *rGPU);
 
 void freeAgentCPU(AGENT *ag);
 void freeAgentGPU(AGENT *ag);
