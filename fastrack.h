@@ -105,6 +105,7 @@ typedef struct {
 								// = num_agents / op_fraction
 	unsigned half_opponents;	// largest power of 2 less than num_opponents
 	unsigned best_opponents[MAX_OPPONENTS];	// maximum number of opponents
+	unsigned *d_best_opponents;	// device pointer to where best_opponents is stored in global memory
 	unsigned run_on_CPU;		// flags
 	unsigned run_on_GPU;
 	

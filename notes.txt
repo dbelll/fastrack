@@ -9,15 +9,20 @@ Must do:
 	
 	Sort standings on the GPU
 	
+	Reduce the number of arguments by storing the pointer to AGENT *agGPU in constant memory and
+	calculating the other pointers from it.
+	
 >>>>>>	On GPU - add multiple, simultaneous learning for each agent with sharing of results.
 		Learn vs. each opponent simultaneously, storing the change in weights to global memory
 		Calculate total change in weights accross all opponents and update agents weights with the total change
 		
-	Compete against best agents from previous 2 rounds
+		?? Divide the 
+		
+	Compete against best agents from previous _2_ rounds
 
 	Test GPUs random move generator
 	
-	Replicate the best agents with 
+	Replicate the best agents with changes to alpha and/or lambda.
 
 Todo's
 

@@ -41,4 +41,4 @@ __constant__ unsigned dc_max_turns;
 __constant__ unsigned dc_episode_length;
 __constant__ unsigned dc_benchmark_games;
 
-__constant__ unsigned dc_best_opponents[MAX_OPPONENTS];
+//__constant__ unsigned dc_best_opponents[MAX_OPPONENTS];

@@ -48,7 +48,7 @@
 
 // define these symbols to turn on pre-kernel messages and post-kernel error checking
 //#define __PRE_KERNEL_ON
-#define __POST_KERNEL_ON
+//#define __POST_KERNEL_ON
 
 static int __iTemp;			// used in GET_PARAM macros
 static float __fTemp;		// used in GET_PARAM macros

@@ -488,7 +488,10 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 	for (int i = 0; i < g_p.num_opponents; i++) {
 		g_p.best_opponents[i] = i;
 	}
-	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_best_opponents", g_p.best_opponents, g_p.num_opponents * sizeof(unsigned)));
+//	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_best_opponents", g_p.best_opponents, g_p.num_opponents * sizeof(unsigned)));
+
+	// copy the best opponent array to global device memory
+	g_p.d_best_opponents = device_copyui(g_p.best_opponents, g_p.num_opponents);
 	
 	return agGPU;
 }
@@ -1865,11 +1868,11 @@ __global__ void compete_kernel(unsigned *seeds, float *wgts, float *opwgts, WON_
 
 }
 
-__global__ void old_learn_kernel(unsigned *seeds, float *wgts, float *e, float *saved_wgts, WON_LOSS *wl, float *delta_wgts)
+__global__ void old_learn_kernel(unsigned *seeds, float *wgts, float *e, float *saved_wgts, WON_LOSS *wl, float *delta_wgts, unsigned *d_best_opponents)
 {
 	unsigned idx = threadIdx.x;
 	unsigned iAgent = blockIdx.x;
-	unsigned iOpponent = dc_best_opponents[blockIdx.y];
+	unsigned iOpponent = d_best_opponents[blockIdx.y];
 	
 	// static shared memory
 	__shared__ float s_rand;
@@ -2354,7 +2357,7 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 		dim3 learnBlockDim(g_p.board_size);
 		dim3 learnGridDim(g_p.num_agents, g_p.num_opponents);
 		PRE_KERNEL2("old_learn_kernel", learnBlockDim, learnGridDim);
-		old_learn_kernel<<<learnGridDim, learnBlockDim, dynamic_shared_mem()>>>(agGPU->seeds, agGPU->wgts, agGPU->e, agGPU->saved_wgts, agGPU->wl, agGPU->delta_wgts);
+		old_learn_kernel<<<learnGridDim, learnBlockDim, dynamic_shared_mem()>>>(agGPU->seeds, agGPU->wgts, agGPU->e, agGPU->saved_wgts, agGPU->wl, agGPU->delta_wgts, g_p.d_best_opponents);
 		POST_KERNEL(learn_kernel);
 		
 		// reduce the delta_wgts to update agent weights
@@ -2375,7 +2378,8 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 		for (int i = 0; i < g_p.num_opponents; i++) {
 			g_p.best_opponents[i] = lastStandings[i].agent;
 		}
-		CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_best_opponents", g_p.best_opponents, g_p.num_opponents * sizeof(unsigned)));
+//		CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_best_opponents", g_p.best_opponents, g_p.num_opponents * sizeof(unsigned)));
+		CUDA_SAFE_CALL(cudaMemcpy(g_p.d_best_opponents, g_p.best_opponents, g_p.num_opponents * sizeof(unsigned), cudaMemcpyHostToDevice)); 
 		PAUSE_TIMER(gpuLearnTimer);
 		
 		// compete against benchmark opponent, storing the results vsChamp array of rGPU results structure
