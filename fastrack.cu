@@ -2334,10 +2334,10 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 	// loop for each learning session
 	for (int iSession = 0; iSession < g_p.num_sessions; iSession++) {
 
-//		RESUME_TIMER(gpuLearnTimer);
-//
-//		printf("\n********** Session %d **********\n", iSession);
-//
+		RESUME_TIMER(gpuLearnTimer);
+
+		printf("\n********** Session %d **********\n", iSession);
+
 //		
 //		// copy current agent weights to the saved_wgts area
 //		PRE_KERNEL2("copy_wgts_kernel", blockDim_wgtCopy, gridDim_wgtCopy);
@@ -2390,7 +2390,7 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 //		// save the best opponents to the global parameters, then copy to device constant memory
 //		CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_best_opponents", g_p.best_opponents, g_p.num_opponents * sizeof(unsigned)));
 //		CUDA_SAFE_CALL(cudaMemcpy(g_p.d_best_opponents, g_p.best_opponents, g_p.num_opponents * sizeof(unsigned), cudaMemcpyHostToDevice)); 
-//		PAUSE_TIMER(gpuLearnTimer);
+		PAUSE_TIMER(gpuLearnTimer);
 //		
 //		PAUSE_TIMER(gpuCompeteTimer);
 //		
