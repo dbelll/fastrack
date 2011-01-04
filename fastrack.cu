@@ -1716,7 +1716,7 @@ __global__ void reduce_wl_kernel(WON_LOSS *wl, WON_LOSS *wl_tot)
 	
 	// reduce the values in shared memory
 	unsigned half = dc_half_opponents;
-	if (half > 0 && idx + half < dc_num_opponents) {
+	if (half > 0 && (idx + half) < dc_num_opponents) {
 		s_games[idx] += s_games[idx + half];
 		s_wins[idx] += s_wins[idx + half];
 		s_losses[idx] += s_losses[idx + half];
@@ -2334,72 +2334,68 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 	// loop for each learning session
 	for (int iSession = 0; iSession < g_p.num_sessions; iSession++) {
 
-		RESUME_TIMER(gpuLearnTimer);
-
-		printf("\n********** Session %d **********\n", iSession);
-
-		
-		// copy current agent weights to the saved_wgts area
-		PRE_KERNEL2("copy_wgts_kernel", blockDim_wgtCopy, gridDim_wgtCopy);
-		copy_wgts_kernel<<<gridDim_wgtCopy, blockDim_wgtCopy>>>(agGPU->wgts, agGPU->saved_wgts);
-		POST_KERNEL(copy_wgts_kernel);		
-		
-		// print out best opponets from the device for debugging purposes
+//		RESUME_TIMER(gpuLearnTimer);
+//
+//		printf("\n********** Session %d **********\n", iSession);
+//
+//		
+//		// copy current agent weights to the saved_wgts area
+//		PRE_KERNEL2("copy_wgts_kernel", blockDim_wgtCopy, gridDim_wgtCopy);
+//		copy_wgts_kernel<<<gridDim_wgtCopy, blockDim_wgtCopy>>>(agGPU->wgts, agGPU->saved_wgts);
+//		POST_KERNEL(copy_wgts_kernel);		
+//		
+//		// print out best opponets from the device for debugging purposes
 //		unsigned best[MAX_OPPONENTS];
 //		CUDA_SAFE_CALL(cudaMemcpyFromSymbol(best, "dc_best_opponents", g_p.num_opponents * sizeof(unsigned), 0, cudaMemcpyDeviceToHost));
 //		printf("Best opponents in dc_best_opponents:\n");
 //		for (int i = 0; i < g_p.num_opponents; i++) {
 //			printf("[%2d] %2d\n", i, best[i]);
 //		}
-		
 
 		// learn against other agents simultaneously
 		dim3 learnBlockDim(g_p.board_size);
 		dim3 learnGridDim(g_p.num_agents, g_p.num_opponents);
 		PRE_KERNEL2("old_learn_kernel", learnBlockDim, learnGridDim);
 		old_learn_kernel<<<learnGridDim, learnBlockDim, dynamic_shared_mem()>>>(agGPU->seeds, agGPU->wgts, agGPU->e, agGPU->saved_wgts, agGPU->wl, agGPU->delta_wgts, g_p.d_best_opponents);
-		POST_KERNEL(learn_kernel);
+		POST_KERNEL(old_learn_kernel);
 		
 		// reduce the delta_wgts to update agent weights
 //		dump_agentsGPU("agents prior to sharing deltas", agGPU, 1, 0);		
-		PRE_KERNEL2("share_delta_kernel", blockDim_share, gridDim_share);
-		share_delta_kernel<<<gridDim_share, blockDim_share, g_p.num_wgts * sizeof(unsigned)>>>(agGPU->saved_wgts, agGPU->delta_wgts, agGPU->wgts);
-		POST_KERNEL(share_delta_kernel);
+//		PRE_KERNEL2("share_delta_kernel", blockDim_share, gridDim_share);
+//		share_delta_kernel<<<gridDim_share, blockDim_share, g_p.num_wgts * sizeof(unsigned)>>>(agGPU->saved_wgts, agGPU->delta_wgts, agGPU->wgts);
+//		POST_KERNEL(share_delta_kernel);
 //		dump_agentsGPU("agents after sharing deltas", agGPU, 1, 0);
-
-		// reduce the won-loss results and store in rGPU
-		dim3 wlBlockDim(g_p.num_opponents);
-		dim3 wlGridDim(g_p.num_agents);
-		PRE_KERNEL2("reduce_wl_kernel", wlBlockDim, wlGridDim);
-		reduce_wl_kernel<<<wlGridDim, wlBlockDim, g_p.num_opponents * 3 * sizeof(unsigned)>>>(agGPU->wl, rGPU->standings + iSession * g_p.num_agents);
-		POST_KERNEL(reduce_wl_kernel); 
-		
-		// save the best opponents to the global parameters, then copy to device constant memory
-		for (int i = 0; i < g_p.num_opponents; i++) {
-			g_p.best_opponents[i] = lastStandings[i].agent;
-		}
+//
+//		// reduce the won-loss results and store in rGPU
+//		dim3 wlBlockDim(g_p.num_opponents);
+//		dim3 wlGridDim(g_p.num_agents);
+//		PRE_KERNEL2("reduce_wl_kernel", wlBlockDim, wlGridDim);
+//		reduce_wl_kernel<<<wlGridDim, wlBlockDim, g_p.num_opponents * 3 * sizeof(unsigned)>>>(agGPU->wl, rGPU->standings + iSession * g_p.num_agents);
+//		POST_KERNEL(reduce_wl_kernel); 
+//		
+//		// compete against benchmark opponent, storing the results vsChamp array of rGPU results structure
+//		RESUME_TIMER(gpuCompeteTimer);
+//		if (g_p.benchmark_games > 0 && 0 == ((1+iSession) % g_p.benchmark_freq)) {
+//			PRE_KERNEL("compete_kernel");
+//			compete_kernel<<<gridDim, blockDim, dynamic_shared_mem()>>>(agGPU->seeds, agGPU->wgts, d_champ_wgts, rGPU->vsChamp + iSession * g_p.num_agents);
+//			POST_KERNEL(compete_kernel);
+//			cudaThreadSynchronize();
+//		}
+//
+//		// copy the standings back to host memory and print them out (which causes the standings to be sorted)
+//		CUDA_SAFE_CALL(cudaMemcpy(lastStandings, rGPU->standings + iSession * g_p.num_agents, g_p.num_agents * sizeof(WON_LOSS), cudaMemcpyDeviceToHost));
+//		CUDA_SAFE_CALL(cudaMemcpy(lastVsChamp, rGPU->vsChamp + iSession * g_p.num_agents, g_p.num_agents * sizeof(WON_LOSS), cudaMemcpyDeviceToHost));
+//		print_standings(lastStandings, lastVsChamp);
+//		
+//		// save the best opponents to the global parameters, then copy to device constant memory
 //		CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_best_opponents", g_p.best_opponents, g_p.num_opponents * sizeof(unsigned)));
-		CUDA_SAFE_CALL(cudaMemcpy(g_p.d_best_opponents, g_p.best_opponents, g_p.num_opponents * sizeof(unsigned), cudaMemcpyHostToDevice)); 
-		PAUSE_TIMER(gpuLearnTimer);
-		
-		// compete against benchmark opponent, storing the results vsChamp array of rGPU results structure
-		RESUME_TIMER(gpuCompeteTimer);
-		if (g_p.benchmark_games > 0 && 0 == ((1+iSession) % g_p.benchmark_freq)) {
-			PRE_KERNEL("compete_kernel");
-			compete_kernel<<<gridDim, blockDim, dynamic_shared_mem()>>>(agGPU->seeds, agGPU->wgts, d_champ_wgts, rGPU->vsChamp + iSession * g_p.num_agents);
-			POST_KERNEL(compete_kernel);
-			cudaThreadSynchronize();
-		}
-
-		// copy the standings back to host memory and print them out (which causes the standings to be sorted)
-		CUDA_SAFE_CALL(cudaMemcpy(lastStandings, rGPU->standings + iSession * g_p.num_agents, g_p.num_agents * sizeof(WON_LOSS), cudaMemcpyDeviceToHost));
-		CUDA_SAFE_CALL(cudaMemcpy(lastVsChamp, rGPU->vsChamp + iSession * g_p.num_agents, g_p.num_agents * sizeof(WON_LOSS), cudaMemcpyDeviceToHost));
-		print_standings(lastStandings, lastVsChamp);
-		
-		PAUSE_TIMER(gpuCompeteTimer);
-		
-		
-		cudaThreadSynchronize();
+//		CUDA_SAFE_CALL(cudaMemcpy(g_p.d_best_opponents, g_p.best_opponents, g_p.num_opponents * sizeof(unsigned), cudaMemcpyHostToDevice)); 
+//		PAUSE_TIMER(gpuLearnTimer);
+//		
+//		PAUSE_TIMER(gpuCompeteTimer);
+//		
+//		
+//		cudaThreadSynchronize();
 	}
 
 	STOP_TIMER(gpuLearnTimer, "GPU learning");

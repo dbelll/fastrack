@@ -3,6 +3,8 @@ Today's Goals
 
 Must do:
 
+	put dc_best_opponents back to constant memory
+	
 	Fix standings spreadsheet to accomodate benchmark frequency
 	
 	Use the macros to get values from AGENT data

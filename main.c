@@ -127,6 +127,7 @@ PARAMS read_params(int argc, const char **argv)
 	p.num_opponents = GET_PARAM("NUM_OPPONENTS", p.num_agents > 4 ? 4 : p.num_agents);
 	p.half_opponents = halfpow2(p.num_opponents);
 	if (p.num_opponents > MAX_OPPONENTS) p.num_opponents = MAX_OPPONENTS;
+	p.best_opponents = (unsigned *)malloc(p.num_opponents * sizeof(unsigned));
 	p.op_fraction = p.num_agents / p.num_opponents;
 	
 	p.run_on_CPU = PARAM_PRESENT("CPU");
