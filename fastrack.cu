@@ -484,7 +484,7 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 	printf("   dc_piece_ratioX: %9.6f\n", piece_ratioX);
 	printf("   dc_piece_ratioO: %9.6f\n", piece_ratioO);
 	
-	// fill best_opponents with [0 num_opponents) and copy to device
+	// fill best_opponents with [0, num_opponents) and copy to device
 	for (int i = 0; i < g_p.num_opponents; i++) {
 		g_p.best_opponents[i] = i;
 	}
@@ -2375,7 +2375,7 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 		for (int i = 0; i < g_p.num_opponents; i++) {
 			g_p.best_opponents[i] = lastStandings[i].agent;
 		}
-		CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_best_opponents", g_p.best_opponents, g_p.num_opponents * sizeof(unsigned), cudaMemcpyHostToDevice));
+		CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_best_opponents", g_p.best_opponents, g_p.num_opponents * sizeof(unsigned)));
 		PAUSE_TIMER(gpuLearnTimer);
 		
 		// compete against benchmark opponent, storing the results vsChamp array of rGPU results structure
