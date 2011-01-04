@@ -1145,9 +1145,9 @@ RESULTS *runCPU(AGENT *agCPU, float *champ_wgts)
 //				unsigned xOp = (iAg + iOp) % g_p.num_agents;
 
 			// compete against the top half of the agents from previous standings
-//			for (int iOp = 0; iOp < g_p.num_agents/((iSession > 0) ? g_p.op_fraction : 1); iOp++){
-			for (int iOp = 0; iOp < 1; iOp++){
-				unsigned xOp = 0;
+			for (int iOp = 0; iOp < g_p.num_opponents; iOp++){
+//			for (int iOp = 0; iOp < 1; iOp++){
+				unsigned xOp = iOp;
 				if (iSession > 0) xOp = r->standings[(iSession-1) * g_p.num_agents + iOp].agent;
 
 //				printf("\n\n>>>>> new matchup >>>>> (%d vs %d)\n", iAg, xOp);
@@ -2342,12 +2342,12 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 		POST_KERNEL(copy_wgts_kernel);		
 		
 		// print out best opponets from the device for debugging purposes
-		unsigned best[MAX_OPPONENTS];
-		CUDA_SAFE_CALL(cudaMemcpyFromSymbol(best, "dc_best_opponents", g_p.num_opponents * sizeof(unsigned), 0, cudaMemcpyDeviceToHost));
-		printf("Best opponents in dc_best_opponents:\n");
-		for (int i = 0; i < g_p.num_opponents; i++) {
-			printf("[%2d] %2d\n", i, best[i]);
-		}
+//		unsigned best[MAX_OPPONENTS];
+//		CUDA_SAFE_CALL(cudaMemcpyFromSymbol(best, "dc_best_opponents", g_p.num_opponents * sizeof(unsigned), 0, cudaMemcpyDeviceToHost));
+//		printf("Best opponents in dc_best_opponents:\n");
+//		for (int i = 0; i < g_p.num_opponents; i++) {
+//			printf("[%2d] %2d\n", i, best[i]);
+//		}
 		
 
 		// learn against other agents simultaneously
@@ -2358,8 +2358,8 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 		POST_KERNEL(learn_kernel);
 //		}
 
-		device_dumpf("delta_wgts", agGPU->delta_wgts, g_p.num_agents * g_p.num_opponents, g_p.num_wgts);
-		device_dumpui("agGPU->wl", (unsigned *)agGPU->wl, g_p.num_agents * g_p.num_opponents, sizeof(WON_LOSS)/sizeof(unsigned));
+//		device_dumpf("delta_wgts", agGPU->delta_wgts, g_p.num_agents * g_p.num_opponents, g_p.num_wgts);
+//		device_dumpui("agGPU->wl", (unsigned *)agGPU->wl, g_p.num_agents * g_p.num_opponents, sizeof(WON_LOSS)/sizeof(unsigned));
 		
 		// learn against other agents simultaneously
 //		dim3 learnBlockDim(g_p.board_size);
@@ -2386,13 +2386,13 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 		
 		
 		// reduce the delta_wgts to update agent weights
-		dump_agentsGPU("agents prior to sharing deltas", agGPU, 1, 0);
+//		dump_agentsGPU("agents prior to sharing deltas", agGPU, 1, 0);
 		
 		PRE_KERNEL2("share_delta_kernel", blockDim_share, gridDim_share);
 		share_delta_kernel<<<gridDim_share, blockDim_share, g_p.num_wgts * sizeof(unsigned)>>>(agGPU->saved_wgts, agGPU->delta_wgts, agGPU->wgts);
 		POST_KERNEL(share_delta_kernel);
 
-		dump_agentsGPU("agents after sharing deltas", agGPU, 1, 0);
+//		dump_agentsGPU("agents after sharing deltas", agGPU, 1, 0);
 
 		RESUME_TIMER(gpuLearnTimer);
 		
