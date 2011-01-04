@@ -7,6 +7,8 @@ Must do:
 	
 	Use the macros to get values from AGENT data
 	
+	Sort standings on the GPU
+	
 >>>>>>	On GPU - add multiple, simultaneous learning for each agent with sharing of results.
 		Learn vs. each opponent simultaneously, storing the change in weights to global memory
 		Calculate total change in weights accross all opponents and update agents weights with the total change
