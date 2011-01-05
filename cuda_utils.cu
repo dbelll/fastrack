@@ -30,7 +30,7 @@ float STOP_TIMER(unsigned int timer, char *message){
 	return elapsed;
 }
 void PAUSE_TIMER(unsigned int timer){	cutilCheckError(cutStopTimer(timer));	}
-void RESUME_TIMER(unsigned int timer){ cutilCheckError(cutStartTimer(timer));	}
+void RESUME_TIMER(unsigned int timer){	cutilCheckError(cutStartTimer(timer));	}
 void RESET_TIMER(unsigned timer){		cutilCheckError(cutResetTimer(timer));	}
 void DELETE_TIMER(unsigned int timer){	cutilCheckError(cutDeleteTimer(timer)); }
 
