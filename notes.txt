@@ -6,7 +6,8 @@ Must do:
 	Create fixed baseline that shows good learning
 	
 	Within on learning session, allow multiple episodes of learning against opponents in parallel and then reducing the results,
-	
+		First, modify learn_kernel to either reset the stats, or read them from global memory and add them.
+		
 	Test GPUs random move generator
 	implement random warm-up on GPU
 

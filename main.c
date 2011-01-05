@@ -70,6 +70,7 @@ void dump_params(PARAMS p)
 	printf("   warmup_length    %7d\n", p.warmup_length);
 	printf("   benchmark games  %7d\n", p.benchmark_games);
 	printf("   benchmark freq   %7d\n", p.benchmark_freq);
+	printf("   reset op freq    %7d\n", p.reset_op_freq);
 	printf("   alpha            %7.4f\n", p.alpha);
 	printf("   epsilon          %7.4f\n", p.epsilon);
 	printf("   gamma            %7.4f\n", p.gamma);
@@ -124,6 +125,7 @@ PARAMS read_params(int argc, const char **argv)
 	p.warmup_length = GET_PARAM("WARMUP_LENGTH", 256);
 	p.benchmark_games = GET_PARAM("BENCHMARK_GAMES", 1000);
 	p.benchmark_freq = GET_PARAM("BENCHMARK_FREQ", 4);
+	p.reset_op_freq = GET_PARAM ("RESET_OP_FREQ", p.benchmark_freq);
 	p.num_opponents = GET_PARAM("NUM_OPPONENTS", p.num_agents > 4 ? 4 : p.num_agents);
 	p.half_opponents = halfpow2(p.num_opponents);
 	if (p.num_opponents > MAX_OPPONENTS) p.num_opponents = MAX_OPPONENTS;
