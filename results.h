@@ -85,7 +85,7 @@ void freeResultsGPU(RESULTS *r)
 void dumpResultsAux(FILE *f, WON_LOSS *standings, WON_LOSS *vsChamp)
 {
 //	printf("dumpResultsAux for standings at %p and vsChamp at %p ... \n", standings, vsChamp);
-	for (int iSession = 0; iSession < g_p.num_sessions; iSession++) {
+	for (int iSession = g_p.standings_freq-1; iSession < g_p.num_sessions; iSession += g_p.standings_freq) {
 		// sort the standings by agent number (vsChamp is already by agent number)
 		qsort(standings + iSession * g_p.num_agents, g_p.num_agents, sizeof(WON_LOSS), wl_byagent);
 		for (int iAg = 0; iAg < g_p.num_agents; iAg++) {
