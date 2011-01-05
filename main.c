@@ -198,5 +198,7 @@ int main(int argc, const char **argv)
 	
 	freeResults(resultsCPU);
 	freeResultsGPU(resultsGPU);
+	
+	printf("agname: %d %d %d %d\n", p.num_agents, p.num_opponents, p.episode_length, p.num_sessions);
 	return 0;
 }

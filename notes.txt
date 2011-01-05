@@ -3,6 +3,8 @@ Today's Goals
 
 Must do:
 
+	build a program to test agents on set board positions
+	
 	put dc_best_opponents back to constant memory
 	
 	Fix standings spreadsheet to accomodate benchmark frequency
