@@ -34,12 +34,4 @@ homejunk
 res_junk
 testing.outerr.*
 
-knight_out.agent
-CPU0.agent
-CPU1.agent
-CPU2.agent
-CPU3.agent
-GPU0.agent
-GPU1.agent
-GPU2.agent
-GPU3.agent
+*.agent
