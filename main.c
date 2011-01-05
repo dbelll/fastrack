@@ -68,9 +68,12 @@ void dump_params(PARAMS p)
 	printf("   num_sessions     %7d\n", p.num_sessions);
 	printf("   episode_length   %7d\n", p.episode_length);
 	printf("   warmup_length    %7d\n", p.warmup_length);
-	printf("   benchmark games  %7d\n", p.benchmark_games);
-	printf("   benchmark freq   %7d\n", p.benchmark_freq);
-	printf("   reset op freq    %7d\n", p.reset_op_freq);
+	printf("   benchmark_games  %7d\n", p.benchmark_games);
+	printf("   benchmark_freq   %7d\n", p.benchmark_freq);
+	printf("   standings_freq   %7d\n", p.standings_freq);
+	printf("   refresh_op_wgts_freq%7d\n", p.refresh_op_wgts_freq);
+	printf("   determine_best_op_freq%7d\n", p.determine_best_op_freq);
+	printf("   begin_using_best_ops%7d\n", p.begin_using_best_ops);
 	printf("   alpha            %7.4f\n", p.alpha);
 	printf("   epsilon          %7.4f\n", p.epsilon);
 	printf("   gamma            %7.4f\n", p.gamma);
@@ -125,7 +128,10 @@ PARAMS read_params(int argc, const char **argv)
 	p.warmup_length = GET_PARAM("WARMUP_LENGTH", 256);
 	p.benchmark_games = GET_PARAM("BENCHMARK_GAMES", 1000);
 	p.benchmark_freq = GET_PARAM("BENCHMARK_FREQ", 4);
-	p.reset_op_freq = GET_PARAM ("RESET_OP_FREQ", p.benchmark_freq);
+	p.standings_freq = GET_PARAM("STANDINGS_FREQ", p.benchmark_freq);
+	p.refresh_op_wgts_freq = GET_PARAM("REFRESH_OP_WGTS_FREQ", 1);
+	p.determine_best_op_freq = GET_PARAM("DETERMINE_BEST_OP_FREQ", p.standings_freq);
+	p.begin_using_best_ops = GET_PARAM("BEGIN_USING_BEST_OPS", 100000);
 	p.num_opponents = GET_PARAM("NUM_OPPONENTS", p.num_agents > 4 ? 4 : p.num_agents);
 	p.half_opponents = halfpow2(p.num_opponents);
 	if (p.num_opponents > MAX_OPPONENTS) p.num_opponents = MAX_OPPONENTS;

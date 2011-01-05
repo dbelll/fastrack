@@ -167,8 +167,8 @@ void print_standings(WON_LOSS *standings, WON_LOSS *vsChamp)
 	unsigned printBenchmark = 0 < vsChamp[0].games;
 	
 	qsort(standings, g_p.num_agents, sizeof(WON_LOSS), wl_compare);
-	printf(    "             G    W    L    PCT");
-	if (printBenchmark) printf("   %4d games vs Champ\n", g_p.benchmark_games);
+	printf(    "              G     W     L    PCT");
+	if (printBenchmark) printf("    %4d games vs Champ\n", g_p.benchmark_games);
 	else printf("\n");
 	
 	WON_LOSS totChamp = {0, 0, 0, 0};
@@ -176,21 +176,21 @@ void print_standings(WON_LOSS *standings, WON_LOSS *vsChamp)
 	
 	for (int i = 0; i < g_p.num_agents; i++) {
 		//			printf("agent%4d  %4d %4d %4d  %5.3f", standings[i].agent, standings[i].games, standings[i].wins, standings[i].losses, 0.5f * (1.0f + (float)(standings[i].wins - standings[i].losses) / (float)standings[i].games));
-		printf("agent%4d  %4d %4d %4d  %5.3f", standings[i].agent, standings[i].games, standings[i].wins, standings[i].losses, winpct(standings[i]));
+		printf("agent%4d  %5d %5d %5d  %5.3f", standings[i].agent, standings[i].games, standings[i].wins, standings[i].losses, winpct(standings[i]));
 		
 		totStand.games += standings[i].games;
 		totStand.wins += standings[i].wins;
 		totStand.losses += standings[i].losses;
 		
 		if (printBenchmark) {
-			printf("  (%4d-%4d)    %+5d\n", vsChamp[standings[i].agent].wins,vsChamp[standings[i].agent].losses, (int)vsChamp[standings[i].agent].wins - (int)vsChamp[standings[i].agent].losses);
+			printf("  (%5d-%5d)  %+6d\n", vsChamp[standings[i].agent].wins,vsChamp[standings[i].agent].losses, (int)vsChamp[standings[i].agent].wins - (int)vsChamp[standings[i].agent].losses);
 			totChamp.games += vsChamp[standings[i].agent].games;
 			totChamp.wins += vsChamp[standings[i].agent].wins;
 			totChamp.losses += vsChamp[standings[i].agent].losses;
 		}else printf("\n");
 	}
-	printf(" avg      %5d%5d%5d  %5.3f ", totStand.games, totStand.wins, totStand.losses, winpct(totStand));
-	if (printBenchmark) printf("(%5.1f-%5.1f)   %+5.1f\n", (float)totChamp.wins / (float)g_p.num_agents, (float)totChamp.losses / (float)g_p.num_agents, (float)((int)totChamp.wins-(int)totChamp.losses) / (float)g_p.num_agents);
+	printf(" avg      %6d%6d%6d  %5.3f ", totStand.games, totStand.wins, totStand.losses, winpct(totStand));
+	if (printBenchmark) printf("(%6.1f-%6.1f)   %+6.1f\n", (float)totChamp.wins / (float)g_p.num_agents, (float)totChamp.losses / (float)g_p.num_agents, (float)((int)totChamp.wins-(int)totChamp.losses) / (float)g_p.num_agents);
 	else printf("\n");
 }
 
