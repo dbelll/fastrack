@@ -99,7 +99,11 @@ typedef struct {
 	unsigned warmup_length;		// number of time steps for initial training against RAND
 	unsigned benchmark_games;	// number of games to play vs. champ after each learning session
 	unsigned benchmark_freq;	// the frequency of running the benchmark, in number of sessions
-	unsigned reset_op_freq;		// the frequency to print the standings and re-determine the best opponents for training
+	unsigned standings_freq;	// the fequency of determining the standings and reseting agent w-l stats
+	unsigned refresh_op_wgts_freq;	// the frequency for refreshing the opponents wgts used for learning
+	unsigned determine_best_op_freq;		// the frequency to determine the best opponent
+											// should be a multiple of the refresh_op_wgts_freq
+	unsigned begin_using_best_ops;	// the session number to begin using the best opponents in learning sessions
 	unsigned op_fraction;		// denominator of the fraction of agents that are used as opponents during learning
 								// 2 ==> use 1/2 of agents, 4 ==> use 1/4, etc.
 	unsigned num_opponents;		// the number of opponents each session
