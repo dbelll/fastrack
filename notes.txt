@@ -3,16 +3,25 @@ Today's Goals
 
 Must do:
 
+	Create fixed baseline that shows good learning
+	
+	Within on learning session, allow multiple episodes of learning against opponents in parallel and then reducing the results,
+	
+	Test GPUs random move generator
+	implement random warm-up on GPU
+
+	Review code for memory leaks
+
 	build a program to test agents on set board positions
 	
 	put dc_best_opponents back to constant memory
 	
+	time all kernels in runGPU
+	
 	Fix standings spreadsheet to accomodate benchmark frequency
 	
 	Use the macros to get values from AGENT data
-	
-	Sort standings on the GPU
-	
+		
 	Reduce the number of arguments by storing the pointer to AGENT *agGPU in constant memory and
 	calculating the other pointers from it.
 	
@@ -23,10 +32,10 @@ Must do:
 		?? Divide the 
 		
 	Compete against best agents from previous _2_ rounds
-
-	Test GPUs random move generator
 	
 	Replicate the best agents with changes to alpha and/or lambda.
+
+
 
 Todo's
 
