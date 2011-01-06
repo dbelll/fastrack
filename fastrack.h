@@ -27,7 +27,8 @@
 #define AGFILE_CPU2 "CPU2.agent"
 #define AGFILE_CPU3 "CPU3.agent"
 
-#define AGENT_FILE_CHAMP "knight57n4v11.agent"
+//#define AGENT_FILE_CHAMP "knight57n4v11.agent"
+#define AGENT_FILE_CHAMP "GPU1n4_64v32_5x20000_pieces2_turns5_lambda025.agent"
 
 #define REWARD_WIN 1.00f
 #define REWARD_LOSS 0.00f

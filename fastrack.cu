@@ -1780,13 +1780,15 @@ __global__ void compete_kernel(unsigned *seeds, float *wgts, float *opwgts, WON_
 {
 	unsigned idx = threadIdx.x;
 	unsigned iAgent = blockIdx.x;
-	
+	unsigned iOpponent = blockIdx.y;	// all opponents are the same benchmark, but 
+
 	__shared__ float s_rand;
 	__shared__ float s_reward;
 	__shared__ unsigned s_terminal;
-	__shared__ unsigned s_games;
-	__shared__ unsigned s_wins;
-	__shared__ unsigned s_losses;
+//	__shared__ unsigned s_stats[0];
+//	__shared__ unsigned s_stats[1];
+//	__shared__ unsigned s_stats[2];
+	__shared__ unsigned s_stats[3];		// games, wins, and losses
 	__shared__ unsigned s_tempui;
 	__shared__ float s_tempf;
 	
@@ -1802,9 +1804,9 @@ __global__ void compete_kernel(unsigned *seeds, float *wgts, float *opwgts, WON_
 	
 	// copy values to shared memory and initialize
 	if (idx == 0) {
-		s_games = 0;
-		s_wins = 0;
-		s_losses = 0;
+		s_stats[0] = 0;
+		s_stats[1] = 0;
+		s_stats[2] = 0;
 	}
 	__syncthreads();
 	
@@ -1834,17 +1836,17 @@ __global__ void compete_kernel(unsigned *seeds, float *wgts, float *opwgts, WON_
 	__syncthreads();
 	choose_moveGPU(s_state, s_temp, s_wgts, s_hidden, s_out, &s_tempui, &s_tempf);
 	
-	while (s_games < dc_benchmark_games) {
+	while (s_stats[0] < dc_benchmark_games) {
 		take_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_terminal, s_ophidden, &s_reward);
 		++turn;
 		
 		if (s_terminal || turn == dc_max_turns) {
 			turn = 0;
 			if (idx == 0) {
-				++s_games;
+				++s_stats[0];
 				if (s_terminal) {
-					if (s_reward > 0.50f) ++s_wins;
-					else ++s_losses;
+					if (s_reward > 0.50f) ++s_stats[1];
+					else ++s_stats[2];
 				}
 				s_rand = RandUniform(s_seeds, dc_board_size);
 			}
@@ -1859,11 +1861,18 @@ __global__ void compete_kernel(unsigned *seeds, float *wgts, float *opwgts, WON_
 	}
 	
 	// store the won/loss record in global memory 
-	if (idx == 0 && wl) {
-		wl[iAgent].agent = iAgent;
-		wl[iAgent].games += s_games;
-		wl[iAgent].wins += s_wins;
-		wl[iAgent].losses += s_losses;
+//	if (idx == 0 && wl) {
+//		wl[iAgent].agent = iAgent;
+//		wl[iAgent].games += s_games;
+//		wl[iAgent].wins += s_wins;
+//		wl[iAgent].losses += s_losses;
+//	}
+	
+	if (wl){
+		if (idx == 0) wl[iAgent * dc_num_opponents + iOpponent].agent = iAgent;
+		if (idx < 3) {
+			*(1 + idx + (unsigned *)(wl + iAgent * dc_num_opponents + iOpponent)) = s_stats[idx];
+		}
 	}
 
 }
@@ -2420,9 +2429,15 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 		// compete against benchmark opponent, storing the results in vsChamp array of rGPU results structure
 		if (g_p.benchmark_games > 0 && 0 == ((1+iSession) % g_p.benchmark_freq)) {
 			RESUME_TIMER(gpuCompeteTimer);
-			PRE_KERNEL("compete_kernel");
-			compete_kernel<<<gridDim, blockDim, dynamic_shared_mem()>>>(agGPU->seeds, agGPU->wgts, d_champ_wgts, rGPU->vsChamp + iSession * g_p.num_agents);
+			PRE_KERNEL2("compete_kernel", learnBlockDim, learnGridDim);
+			compete_kernel<<<learnGridDim, learnBlockDim, dynamic_shared_mem()>>>(agGPU->seeds, agGPU->wgts, d_champ_wgts, agGPU->wl);
 			POST_KERNEL(compete_kernel);
+
+			dim3 wlBlockDim(g_p.num_opponents);
+			dim3 wlGridDim(g_p.num_agents);
+			PRE_KERNEL2("reduce_wl_kernel", wlBlockDim, wlGridDim);
+			reduce_wl_kernel<<<wlGridDim, wlBlockDim, g_p.num_opponents * 3 * sizeof(unsigned)>>>(agGPU->wl, rGPU->vsChamp + iSession * g_p.num_agents);
+			POST_KERNEL(reduce_wl_kernel); 
 
 			cudaThreadSynchronize();
 			PAUSE_TIMER(gpuCompeteTimer);
