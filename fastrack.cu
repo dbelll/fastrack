@@ -96,6 +96,19 @@ unsigned calc_wgts_stride(unsigned num_hidden, unsigned board_size)
 {
 	return MAX_STATE_SIZE * (num_hidden + 2);
 }
+#elif GLOBAL_WGTS_FORMAT == 3
+unsigned calc_num_wgts(unsigned num_hidden, unsigned board_size)
+{
+	return num_hidden * (2 * board_size + 2) + 1;
+}
+unsigned calc_wgts_stride(unsigned num_hidden, unsigned board_size)
+{
+	unsigned nw = calc_num_wgts(num_hidden, board_size);
+	printf("number of weights is %d padded out to ", nw);
+	nw = 32 * (1 + (nw-1)/32);
+	printf("%d\n", nw);
+	return nw;
+}
 #endif
 
 
@@ -2393,7 +2406,7 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 
 		// learn against other agents simultaneously
 		RESUME_TIMER(gpuLearnTimer);
-		dim3 learnBlockDim(g_p.board_size*2);
+		dim3 learnBlockDim(g_p.board_size);
 		dim3 learnGridDim(g_p.num_agents, g_p.num_opponents);
 		PRE_KERNEL2("old_learn_kernel", learnBlockDim, learnGridDim);
 		old_learn_kernel<<<learnGridDim, learnBlockDim, dynamic_shared_mem()>>>(agGPU->seeds, agGPU->wgts, agGPU->e, agGPU->saved_wgts, agGPU->wl, agGPU->delta_wgts, g_p.d_best_opponents, (0 == iSession % g_p.standings_freq));

@@ -75,7 +75,6 @@ float *psIH(float *w, unsigned iI, unsigned iH){ return w + iH * g_p.state_size 
 float *psBH(float *w, unsigned iH){ return w + g_p.state_size * g_p.num_hidden + iH; }
 float *psHO(float *w, unsigned iH){ return w + g_p.state_size * (g_p.num_hidden + 1) + iH; }
 float *psBO(float *w){ return w + g_p.num_wgts - 1; }
-
 // macros for use on device
 // They evaluate to a pointer to the first value for the specified section of weights
 #define G_IXH(w, iH) (w + iH * MAX_STATE_SIZE)
@@ -89,6 +88,58 @@ float *psBO(float *w){ return w + g_p.num_wgts - 1; }
 #define S_BH(w) (w + dc_num_hidden * dc_state_size)
 #define S_HO(w) (S_BH(w) + dc_num_hidden)
 #define S_BO(w) (S_HO(w) + dc_num_hidden)
+
+#elif GLOBAL_WGTS_FORMAT == 3
+
+/*
+ version 3 - global has I->H first with rows corresponding to each hidden node and columns = state_size.
+ The B->H and H->O values are next and each is num_hidden columns.
+ The single value B->O is in the last value of the H->O area.
+ Total size is padded to a multiple of 32.
+ I->H	(num_hidden * state_size)
+ B->H	(num_hidden)
+ H->O	(num_hidden)
+ B->O	1
+ Global weights take up (state_size + 2) * num_hidden + 1 values, rounded up to multiple of 32.
+ 
+ Compact format removes padding at the end:
+ I->H	(num_hidden * state_size)
+ B->H	num_hidden
+ H->O	num_hidden
+ B->O	1
+ Total size for compact format is (state_size + 2)*num_hidden + 1	
+ */
+
+float *pgIXH(float *w, unsigned iX, unsigned iH){ return w + iH * g_p.state_size + iX; }
+float *pgIOH(float *w, unsigned iO, unsigned iH){ return w + iH * g_p.state_size + g_p.board_size + iO; }
+float *pgIH(float *w, unsigned iI, unsigned iH){ 
+	return (iI >= g_p.board_size) ? pgIOH(w, iI-g_p.board_size, iH) : pgIXH(w, iI, iH); 
+}
+
+float *psIH(float *w, unsigned iI, unsigned iH){ return w + iH * g_p.state_size + iI; }
+float *psBH(float *w, unsigned iH){ return w + g_p.state_size * g_p.num_hidden + iH; }
+float *psHO(float *w, unsigned iH){ return w + g_p.state_size * (g_p.num_hidden + 1) + iH; }
+float *psBO(float *w){ return w + g_p.num_wgts - 1; }
+
+float *pgBH(float *w, unsigned iH){ return psBH(w, iH); }
+float *pgHO(float *w, unsigned iH){ return psHO(w, iH); }
+float *pgBO(float *w){ return psBO(w); }
+
+
+// macros for use on device
+// They evaluate to a pointer to the first value for the specified section of weights
+#define G_IXH(w, iH) (w + iH * dc_state_size)
+#define G_IOH(w, iH) (G_IXH(w, iH) + dc_board_size)
+#define G_BH(w) (w + dc_num_hidden * dc_state_size)
+#define G_HO(w) (G_BH(w) + dc_num_hidden)
+#define G_BO(w) (G_HO(w) + dc_num_hidden)
+
+#define S_IXH(w, iH) (w + iH * dc_state_size)
+#define S_IOH(w, iH) (S_IXH(w, iH) + dc_board_size)
+#define S_BH(w) (w + dc_num_hidden * dc_state_size)
+#define S_HO(w) (S_BH(w) + dc_num_hidden)
+#define S_BO(w) (S_HO(w) + dc_num_hidden)
+
 
 
 #endif
