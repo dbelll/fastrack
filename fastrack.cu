@@ -2393,7 +2393,7 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 
 		// learn against other agents simultaneously
 		RESUME_TIMER(gpuLearnTimer);
-		dim3 learnBlockDim(g_p.board_size*2);
+		dim3 learnBlockDim(g_p.board_size);
 		dim3 learnGridDim(g_p.num_agents, g_p.num_opponents);
 		PRE_KERNEL2("old_learn_kernel", learnBlockDim, learnGridDim);
 		old_learn_kernel<<<learnGridDim, learnBlockDim, dynamic_shared_mem()>>>(agGPU->seeds, agGPU->wgts, agGPU->e, agGPU->saved_wgts, agGPU->wl, agGPU->delta_wgts, g_p.d_best_opponents, (0 == iSession % g_p.standings_freq));
