@@ -1,6 +1,6 @@
 timestamp
-gridsize
-threadblocksize
+#gridsize
+#threadblocksize
 dynsmemperblock
 stasmemperblock
 regperthread
@@ -14,13 +14,13 @@ regperthread
 #local_store
 #gld_request
 #gls_request
-#gld_incoherent
-#gld_coherent
-#gst_incoherent
-#gst_coherent
-sm_cta_launched
+gld_incoherent
+gld_coherent
+gst_incoherent
+gst_coherent
+#sm_cta_launched
 
-warp_serialize
+#warp_serialize
 
 # profiler triggers are are incremented by using __prof_trigger(n) in kernel code
 #prof_trigger_00

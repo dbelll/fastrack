@@ -3,8 +3,11 @@ Today's Goals
 
 Must do:
 
-	Profile kernels
-
+	Profile kernels and optimize
+		choose_move is the bottleneck, has incoherent global memory reads
+	
+	Re-organize global memory layout of weights to match shared memory layout
+	
 
 	Use twice as many threads in the learn kernel to speed up wgt copying.  The threads beyond
 	dc_board_size then do nothing during learning.

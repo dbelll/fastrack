@@ -1403,6 +1403,9 @@ __device__ void copy_wgts_to_s(float *g_wgts, float *s_wgts)
 	if (idx == 0) {
 		S_BO(s_wgts)[idx] = G_BO(g_wgts)[idx];
 	}
+
+	s_wgts[idx] = g_wgts[idx];
+	
 	__syncthreads();
 }
 
@@ -1425,6 +1428,8 @@ __device__ void copy_wgts_to_g(float *s_wgts, float *g_wgts)
 	if (idx == 0) {
 		G_BO(g_wgts)[idx] = S_BO(s_wgts)[idx];
 	}
+
+	g_wgts[idx] = s_wgts[idx];
 	__syncthreads();
 }
 
@@ -1922,6 +1927,7 @@ __global__ void old_learn_kernel(unsigned *seeds, float *wgts, float *e, float *
 	float *s_wgts = s_ophidden + dc_num_hidden;				// dc_num_wgts
 	float *s_e = s_wgts + dc_num_wgts;						// dc_num_wgts
 	float *s_opwgts = s_e + dc_num_wgts;					// dc_num_wgts
+	int *s_moves = (int *)s_opwgts + dc_num_wgts;			// dc_board_size
 	
 	// copy individual values to shared memory and initialize
 	if (idx == 0){
@@ -1945,7 +1951,7 @@ __global__ void old_learn_kernel(unsigned *seeds, float *wgts, float *e, float *
 	s_seeds[idx + dc_board_size] = seeds[iAgent * 4 * dc_board_size + idx + dc_board_size];
 	s_seeds[idx + 2*dc_board_size] = seeds[iAgent * 4 * dc_board_size + idx + 2*dc_board_size];
 	s_seeds[idx + 3*dc_board_size] = seeds[iAgent * 4 * dc_board_size + idx + 3*dc_board_size];
-	
+
 	// copy agent weights to shared memory and reset eligibility trace
 	copy_wgts_to_s(wgts + iAgent * dc_wgts_stride, s_wgts);
 	reset_traceGPU(s_e);
@@ -2048,7 +2054,7 @@ __global__ void old_learn_kernel(unsigned *seeds, float *wgts, float *e, float *
 		if (idx == 0) s_V = s_V_prime;
 		__syncthreads();
 	}
-	
+
 	// copy values back to global memory
 	dc_ag.states[iAgent * dc_state_size + idx] = s_state[idx];
 	dc_ag.states[iAgent * dc_state_size + idx + dc_board_size] = s_state[idx + dc_board_size];
@@ -2059,7 +2065,7 @@ __global__ void old_learn_kernel(unsigned *seeds, float *wgts, float *e, float *
 	dc_ag.seeds[iAgent * dc_board_size * 4 + idx + 3*dc_board_size] = s_seeds[idx + 3*dc_board_size];
 
 //	copy_wgts_to_g(s_wgts, wgts + iAgent * dc_wgts_stride);		// not needed -- use delta_wgts to get new wgts
-	copy_wgts_to_g(s_e, e + iAgent * dc_wgts_stride);			// for information only
+//	copy_wgts_to_g(s_e, e + iAgent * dc_wgts_stride);			// for information only
 
 	// caclulate delta_wgts and store in global memory
 	calc_delta_wgts(s_wgts, saved_wgts + iAgent * dc_wgts_stride, delta_wgts + iAgent * dc_num_wgts * dc_num_opponents + iOpponent * dc_num_wgts);
@@ -2071,13 +2077,13 @@ __global__ void old_learn_kernel(unsigned *seeds, float *wgts, float *e, float *
 			*(1 + idx + (unsigned *)(wl + iAgent * dc_num_opponents + iOpponent)) = s_stats[idx];
 		}
 	}
+
 //	if (idx == 0 && wl) {
 //		wl[iAgent*dc_num_opponents + iOpponent].agent = iAgent;
 //		wl[iAgent*dc_num_opponents + iOpponent].games = s_stats[0];
 //		wl[iAgent*dc_num_opponents + iOpponent].wins = s_stats[1];
 //		wl[iAgent*dc_num_opponents + iOpponent].losses = s_stats[2];
 //	}
-
 }
 
 /*
@@ -2292,6 +2298,7 @@ unsigned dynamic_shared_mem()
 	count += g_p.num_wgts;					// s_wgts
 	count += g_p.num_wgts;					// s_e
 	count += g_p.num_wgts;					// s_opwgts
+	count += g_p.board_size;				// s_moves;
 //	printf("%d elements in shared memory, total of %d bytes\n", count, count * 4);
 	return sizeof(unsigned) * count;
 }
