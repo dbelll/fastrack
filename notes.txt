@@ -3,6 +3,10 @@ Today's Goals
 
 Must do:
 
+	Run benchmark in parallel, then reduce the results
+	
+	Add an alternative benchmark of playing all the opponents (with learning off) - run this in parallel
+	
 	Create fixed baseline that shows good learning
 	
 	Within on learning session, allow multiple episodes of learning against opponents in parallel and then reducing the results,
