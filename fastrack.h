@@ -6,6 +6,7 @@
 //  Copyright dbelll 2010. All rights reserved.
 //
 
+//#define USE_TEXTURE_FOR_MOVES
 
 #define GLOBAL_WGTS_FORMAT 2
 #define FILE_FORMAT 1

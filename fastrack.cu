@@ -449,11 +449,10 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 	// allocate room for storing temporary won-loss information
 	CUDA_SAFE_CALL(cudaMalloc(&agGPU->wl, g_p.num_agents * g_p.num_opponents * sizeof(WON_LOSS)));
 
-/*
-		no longer needed because of texture
+#ifndef USE_TEXTURE_FOR_MOVES
 	int *d_g_moves = device_copyi(g_moves, g_p.board_size * MAX_MOVES);
 	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_moves", &d_g_moves, sizeof(int *)));
-*/
+#endif
 
 //	host_dumpi("g_moves", g_moves, MAX_MOVES, g_p.board_size);
 //	device_dumpi("d_moves", d_g_moves, MAX_MOVES, g_p.board_size);
@@ -509,6 +508,7 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 	// copy the best opponent array to global device memory
 	g_p.d_best_opponents = device_copyui(g_p.best_opponents, g_p.num_opponents);
 	
+#ifdef USE_TEXTURE_FOR_MOVES
 	// initialize texture to hold the moves array
 	texRef.addressMode[0] = cudaAddressModeClamp;
 	texRef.addressMode[1] = cudaAddressModeClamp;
@@ -517,6 +517,7 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 	CUDA_SAFE_CALL(cudaMallocArray((cudaArray **)&d_moves, &channelDesc, g_p.board_size, MAX_MOVES));
 	CUDA_SAFE_CALL(cudaMemcpyToArray(d_moves, 0, 0, g_moves, MAX_MOVES * g_p.board_size * sizeof(int), cudaMemcpyHostToDevice));
 	cudaBindTextureToArray(texRef, d_moves, channelDesc);
+#endif
 	
 	return agGPU;
 }
@@ -1598,8 +1599,11 @@ __device__ void random_moveGPU(unsigned *s_state, unsigned *s_temp, unsigned *ps
 		// each thread will choose a random move from its cell and then determine if its legal
 		if (X_BOARDGPU(s_state)[idx]) {
 			unsigned m = rand_num(MAX_MOVES, s_seeds, stride);
-//			iTo = dc_moves[m * dc_board_size + idx];
+#ifdef USE_TEXTURE_FOR_MOVES
 			iTo = tex2D(texRef, idx, m);
+#else
+			iTo = dc_moves[m * dc_board_size + idx];
+#endif
 			if (iTo >= 0 && !X_BOARDGPU(s_state)[iTo]) {
 				// found a possible move, record <from> <to> and <rand_val> into one int in s_temp
 				s_temp[idx] = idx | (iTo << dc_board_bits) | (RandUniformui(s_seeds, stride) << (2*dc_board_bits));
@@ -1656,8 +1660,11 @@ __device__ void choose_moveGPU(unsigned *s_state, float *s_temp, float *s_wgts, 
 	for (int iFrom = 0; iFrom < dc_board_size; iFrom++) {
 		if (X_BOARDGPU(s_state)[iFrom]) {
 			for (int m = 0; m < MAX_MOVES; m++) {
-//				int iTo = dc_moves[m * dc_board_size + iFrom];
+#ifdef USE_TEXTURE_FOR_MOVES
 				int iTo = tex2D(texRef, iFrom, m);
+#else
+				int iTo = dc_moves[m * dc_board_size + iFrom];
+#endif
 				if (iTo >= 0 && !X_BOARDGPU(s_state)[iTo]){
 					// found a possible move, modify the board and calculate the value
 					unsigned oPiece;
