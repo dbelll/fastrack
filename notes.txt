@@ -5,6 +5,7 @@ Must do:
 
 	Profile kernels and optimize
 		choose_move is the bottleneck, has incoherent global memory reads
+		put *dc_moves into a texture?
 	
 	Re-organize global memory layout of weights to match shared memory layout
 	

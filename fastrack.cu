@@ -448,13 +448,16 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 	
 	// allocate room for storing temporary won-loss information
 	CUDA_SAFE_CALL(cudaMalloc(&agGPU->wl, g_p.num_agents * g_p.num_opponents * sizeof(WON_LOSS)));
-	
+
+/*
+		no longer needed because of texture
 	int *d_g_moves = device_copyi(g_moves, g_p.board_size * MAX_MOVES);
-	
+	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_moves", &d_g_moves, sizeof(int *)));
+*/
+
 //	host_dumpi("g_moves", g_moves, MAX_MOVES, g_p.board_size);
 //	device_dumpi("d_moves", d_g_moves, MAX_MOVES, g_p.board_size);
 	
-	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_moves", &d_g_moves, sizeof(int *)));
 	
 	// copy parameter values to constant memory
 	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_ag", agGPU, sizeof(AGENT)));
@@ -505,6 +508,15 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 
 	// copy the best opponent array to global device memory
 	g_p.d_best_opponents = device_copyui(g_p.best_opponents, g_p.num_opponents);
+	
+	// initialize texture to hold the moves array
+	texRef.addressMode[0] = cudaAddressModeClamp;
+	texRef.addressMode[1] = cudaAddressModeClamp;
+	texRef.filterMode = cudaFilterModePoint;
+	texRef.normalized = false;
+	CUDA_SAFE_CALL(cudaMallocArray((cudaArray **)&d_moves, &channelDesc, g_p.board_size, MAX_MOVES));
+	CUDA_SAFE_CALL(cudaMemcpyToArray(d_moves, 0, 0, g_moves, MAX_MOVES * g_p.board_size * sizeof(int), cudaMemcpyHostToDevice));
+	cudaBindTextureToArray(texRef, d_moves, channelDesc);
 	
 	return agGPU;
 }
@@ -1586,7 +1598,8 @@ __device__ void random_moveGPU(unsigned *s_state, unsigned *s_temp, unsigned *ps
 		// each thread will choose a random move from its cell and then determine if its legal
 		if (X_BOARDGPU(s_state)[idx]) {
 			unsigned m = rand_num(MAX_MOVES, s_seeds, stride);
-			iTo = dc_moves[m * dc_board_size + idx];
+//			iTo = dc_moves[m * dc_board_size + idx];
+			iTo = tex2D(texRef, idx, m);
 			if (iTo >= 0 && !X_BOARDGPU(s_state)[iTo]) {
 				// found a possible move, record <from> <to> and <rand_val> into one int in s_temp
 				s_temp[idx] = idx | (iTo << dc_board_bits) | (RandUniformui(s_seeds, stride) << (2*dc_board_bits));
@@ -1643,7 +1656,8 @@ __device__ void choose_moveGPU(unsigned *s_state, float *s_temp, float *s_wgts, 
 	for (int iFrom = 0; iFrom < dc_board_size; iFrom++) {
 		if (X_BOARDGPU(s_state)[iFrom]) {
 			for (int m = 0; m < MAX_MOVES; m++) {
-				int iTo = dc_moves[m * dc_board_size + iFrom];
+//				int iTo = dc_moves[m * dc_board_size + iFrom];
+				int iTo = tex2D(texRef, iFrom, m);
 				if (iTo >= 0 && !X_BOARDGPU(s_state)[iTo]){
 					// found a possible move, modify the board and calculate the value
 					unsigned oPiece;
@@ -1927,7 +1941,6 @@ __global__ void old_learn_kernel(unsigned *seeds, float *wgts, float *e, float *
 	float *s_wgts = s_ophidden + dc_num_hidden;				// dc_num_wgts
 	float *s_e = s_wgts + dc_num_wgts;						// dc_num_wgts
 	float *s_opwgts = s_e + dc_num_wgts;					// dc_num_wgts
-	int *s_moves = (int *)s_opwgts + dc_num_wgts;			// dc_board_size
 	
 	// copy individual values to shared memory and initialize
 	if (idx == 0){
@@ -2298,7 +2311,6 @@ unsigned dynamic_shared_mem()
 	count += g_p.num_wgts;					// s_wgts
 	count += g_p.num_wgts;					// s_e
 	count += g_p.num_wgts;					// s_opwgts
-	count += g_p.board_size;				// s_moves;
 //	printf("%d elements in shared memory, total of %d bytes\n", count, count * 4);
 	return sizeof(unsigned) * count;
 }

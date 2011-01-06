@@ -35,10 +35,15 @@ __constant__ float dc_init_wgt_max;
 // To do a bulk copy or other operation on all weights, must repeate dc_reps_for_wgts times.
 __constant__ unsigned dc_reps_for_wgts;		// = 1 + (num_wgts-1)/board_size
 
-__constant__ int *dc_moves;			// pointer to d_g_moves array on device
+//__constant__ int *dc_moves;			// pointer to d_g_moves array on device
 
 __constant__ unsigned dc_max_turns;
 __constant__ unsigned dc_episode_length;
 __constant__ unsigned dc_benchmark_games;
 
 //__constant__ unsigned dc_best_opponents[MAX_OPPONENTS];
+
+//========= texture ==================
+texture<int, 2, cudaReadModeElementType> texRef;
+static cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc(32, 0, 0, 0, cudaChannelFormatKindSigned);
+static cudaArray *d_moves;
