@@ -3,7 +3,13 @@ Today's Goals
 
 Must do:
 
-	Run benchmark in parallel, then reduce the results
+	Profile kernels
+
+
+	Use twice as many threads in the learn kernel to speed up wgt copying.  The threads beyond
+	dc_board_size then do nothing during learning.
+	
+	Add a parameter to parallel benchmark to specify the number of simultaneous threads
 	
 	Add an alternative benchmark of playing all the opponents (with learning off) - run this in parallel
 	
@@ -20,8 +26,6 @@ Must do:
 	build a program to test agents on set board positions
 	
 	put dc_best_opponents back to constant memory
-	
-	time all kernels in runGPU
 	
 	Fix standings spreadsheet to accomodate benchmark frequency
 	
