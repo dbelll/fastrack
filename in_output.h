@@ -268,6 +268,29 @@ void dump_agentsGPU(const char *str, AGENT *agGPU, unsigned dumpW, unsigned dump
 	freeAgentCPU(agCPU);
 }
 
+// dump just the agent parameters : alpha, lambda, training_pieces, and training_turns
+void dump_agent_paramsGPU(const char *str, AGENT *agGPU)
+{
+	float *h_alpha = host_copyf(agGPU->alpha, g_p.num_agents);
+	float *h_lambda = host_copyf(agGPU->lambda, g_p.num_agents);
+	unsigned *h_training_pieces = host_copyui(agGPU->training_pieces, g_p.num_agents);
+	unsigned *h_training_turns = host_copyui(agGPU->training_turns, g_p.num_agents);
+	
+	printf("======================================================================\n");
+	printf("%s\n", str);
+	printf("----------------------------------------------------------------------\n");
+		printf("          alpha lambda training_pieces training_turns\n");
+	for (int i = 0; i < g_p.num_agents; i++) {
+		printf("[AGENT%5d]%6.4f %6.4f    %3d          %3d\n", i, h_alpha[i], h_lambda[i], h_training_pieces[i], h_training_turns[i]);
+	}
+	printf("======================================================================\n");
+
+	free(h_alpha);
+	free(h_lambda);
+	free(h_training_pieces);
+	free(h_training_turns);
+}
+
 // save GPU agent data to file
 void save_agentsGPU(AGENT *d_agGPU, RESULTS *rGPU)
 {
