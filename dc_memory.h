@@ -39,9 +39,9 @@ __constant__ unsigned dc_reps_for_wgts;		// = 1 + (num_wgts-1)/board_size
 
 __constant__ unsigned dc_max_turns;
 __constant__ unsigned dc_episode_length;
-__constant__ unsigned dc_benchmark_games;
+__constant__ unsigned dc_benchmark_games_per_op;
 
-//__constant__ unsigned dc_best_opponents[MAX_OPPONENTS];
+//__constant__ unsigned dc_opgrid[MAX_OPPONENTS];
 
 #ifdef USE_TEXTURE_FOR_MOVES
 //========= texture ==================

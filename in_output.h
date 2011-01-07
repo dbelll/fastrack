@@ -10,7 +10,7 @@
 // write the global parameters to a .CSV file
 void save_parameters(FILE *f)
 {
-	fprintf(f, "SEED, %u, CHAMP, %s\n", g_p.seed, AGENT_FILE_CHAMP);
+	fprintf(f, "SEED, %u, CHAMP, %s\n", g_p.seed, g_p.champ);
 	fprintf(f, "board size, %d, %d\n", g_p.board_width, g_p.board_height);
 	fprintf(f, "NUM_PIECES, %d\n", g_p.num_pieces);
 	fprintf(f, "MAX_TURNS, %d\n", g_p.max_turns);

@@ -28,14 +28,22 @@
 #define AGFILE_CPU2 "CPU2.agent"
 #define AGFILE_CPU3 "CPU3.agent"
 
-//#define AGENT_FILE_CHAMP "knight57n4v11.agent"
-#define AGENT_FILE_CHAMP "GPU1n4_64v32_5x20000_pieces2_turns5_lambda025.agent"
+#define AGENT_FILE_CHAMP00 "knight57n4v11.agent"
+#define AGENT_FILE_CHAMP01 "GPU1n4_64v32_5x20000_pieces2_turns5_lambda025.agent"
 
 #define REWARD_WIN 1.00f
 #define REWARD_LOSS 0.00f
 #define REWARD_TIME_LIMIT 0.50f
 
 #define ALPHA_HALF_LIFE 20
+
+enum OPPONENT_METHODS {
+	OM_SELF=0,		// 0
+	OM_FIXED1,		// 1
+	OM_FIXED2,		// 2
+	OM_BEST,		// 3
+	OM_ONE,			// 4
+};
 
 // piece move definitions
 #define MOVES_KNIGHT {{1, 2}, {2, 1}, {2, -1}, {1, -2}, {-1, -2}, {-2, -1}, {-2, 1}, {-1, 2}}
@@ -97,8 +105,10 @@ typedef struct {
 	
 	unsigned num_agents;		// number of agents in population 
 	unsigned num_sessions;		// number of learning sessions with num_agents episodes in each
+	unsigned segs_per_session;	// segments per session
 	unsigned episode_length;	// number of time steps in each learning episode
 	unsigned warmup_length;		// number of time steps for initial training against RAND
+	unsigned iChamp;			// index into the champs to be used for benchmarking
 	unsigned benchmark_games;	// number of games to play vs. champ after each learning session
 	unsigned benchmark_freq;	// the frequency of running the benchmark, in number of sessions
 	unsigned standings_freq;	// the fequency of determining the standings and reseting agent w-l stats
@@ -110,9 +120,10 @@ typedef struct {
 								// 2 ==> use 1/2 of agents, 4 ==> use 1/4, etc.
 	unsigned num_opponents;		// the number of opponents each session
 								// = num_agents / op_fraction
+	enum OPPONENT_METHODS op_method;	// opponent assignment method
 	unsigned half_opponents;	// largest power of 2 less than num_opponents
-	unsigned *best_opponents;	// maximum number of opponents
-	unsigned *d_best_opponents;	// device pointer to where best_opponents is stored in global memory
+	unsigned *opgrid;			// the oppoents each agent will learn against (segs_per_session * num_opponents)
+	unsigned *d_opgrid;			// device pointer to where opponent grid is stored in global memory
 	unsigned run_on_CPU;		// flags
 	unsigned run_on_GPU;
 	

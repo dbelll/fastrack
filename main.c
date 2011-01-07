@@ -17,6 +17,10 @@
 #include "fastrack.h"
 #include "helpers.h"
 
+
+static const char *champs[] = { AGENT_FILE_CHAMP00, AGENT_FILE_CHAMP01 };
+
+
 // print out information on using this program
 void display_help()
 {
@@ -124,18 +128,43 @@ PARAMS read_params(int argc, const char **argv)
 	
 	p.num_agents = GET_PARAM("NUM_AGENTS", 64);
 	p.num_sessions = GET_PARAM("NUM_SESSIONS", 16);	
+	p.segs_per_session = GET_PARAM("SEGS_PER_SESSION", 1);
 	p.episode_length = GET_PARAM("EPISODE_LENGTH", 256);
 	p.warmup_length = GET_PARAM("WARMUP_LENGTH", 256);
 	p.benchmark_games = GET_PARAM("BENCHMARK_GAMES", 1000);
 	p.benchmark_freq = GET_PARAM("BENCHMARK_FREQ", 4);
+	p.iChamp = GET_PARAM("ICHAMP", 0);
+	p.champ = champs[p.iChamp];
 	p.standings_freq = GET_PARAM("STANDINGS_FREQ", p.benchmark_freq);
 	p.refresh_op_wgts_freq = GET_PARAM("REFRESH_OP_WGTS_FREQ", 1);
 	p.determine_best_op_freq = GET_PARAM("DETERMINE_BEST_OP_FREQ", p.standings_freq);
 	p.begin_using_best_ops = GET_PARAM("BEGIN_USING_BEST_OPS", 100000);
 	p.num_opponents = GET_PARAM("NUM_OPPONENTS", p.num_agents > 4 ? 4 : p.num_agents);
+	int op_method = GET_PARAM("OP_METHOD", OM_FIXED1);
+	switch (op_method) {
+		case OM_SELF:
+			p.op_method = OM_SELF;
+			break;
+		case OM_FIXED1:
+			p.op_method = OM_FIXED1;
+			break;
+		case OM_FIXED2:
+			p.op_method = OM_FIXED2;
+			break;
+		case OM_BEST:
+			p.op_method = OM_BEST;
+			break;
+		case OM_ONE:
+			p.op_method = OM_ONE;
+			break;
+		default:
+			printf("*** ERROR *** Unknown opponent assignment method\n");
+			exit(-1);
+			break;
+	}
 	p.half_opponents = halfpow2(p.num_opponents);
 	if (p.num_opponents > MAX_OPPONENTS) p.num_opponents = MAX_OPPONENTS;
-	p.best_opponents = (unsigned *)malloc(p.num_opponents * sizeof(unsigned));
+	p.opgrid = (unsigned *)malloc(p.num_agents * p.num_opponents * sizeof(unsigned));
 	p.op_fraction = p.num_agents / p.num_opponents;
 	
 	p.run_on_CPU = PARAM_PRESENT("CPU");
@@ -162,7 +191,6 @@ PARAMS read_params(int argc, const char **argv)
 	p.timesteps = p.num_sessions * p.num_agents * p.episode_length;
 	p.agent_timesteps = p.timesteps * p.num_agents;
 	
-	p.champ = AGENT_FILE_CHAMP;
 	
 	printf("[FASTRACK][BOARD_SIZE %06d][NUM_PIECES %3d][MAX_TURNS %3d][SEED%10d][NUM_HIDDEN%4d][INIT_WGT_MIN%7.4f][INIT_WGT_MAX%7.4f][ALPHA%7.4f][EPSILON%7.4f][GAMMA%7.4f][LAMBDA%7.4f][NUM_AGENTS%7d][NUM_SESSIONS%7d][EPISODE_LENGTH%7d][WARMUP_LENGTH%7d][BENCHMARK_GAMES%7d]\n", 1000*p.board_width + p.board_height, p.num_pieces, p.max_turns, p.seed, p.num_hidden, p.init_wgt_min, p.init_wgt_max, p.alpha, p.epsilon, p.gamma, p.lambda, p.num_agents, p.num_sessions, p.episode_length, p.warmup_length, p.benchmark_games);
 
@@ -185,7 +213,7 @@ int main(int argc, const char **argv)
 	}
 
 	// load champ weights for benchmark testing
-	float *champ_wgts = load_champ(AGENT_FILE_CHAMP);
+	float *champ_wgts = load_champ(p.champ);
 //	dump_agentsCPU("after load_champ", agCPU, 0, 0);
 	
 	RESULTS *resultsCPU = NULL;

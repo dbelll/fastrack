@@ -5,7 +5,7 @@ Must do:
 
 	Profile kernels and optimize
 		choose_move is the bottleneck, has incoherent global memory reads
-		put *dc_moves into a texture?
+		<done> put *dc_moves into a texture?
 	
 	Re-organize global memory layout of weights to match shared memory layout
 	
@@ -29,7 +29,7 @@ Must do:
 
 	build a program to test agents on set board positions
 	
-	put dc_best_opponents back to constant memory
+	put dc_opgrid back to constant memory
 	
 	Fix standings spreadsheet to accomodate benchmark frequency
 	
