@@ -455,8 +455,8 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 	CUDA_SAFE_CALL(cudaMalloc(&agGPU->training_pieces, g_p.num_agents * sizeof(unsigned)));
 	CUDA_SAFE_CALL(cudaMalloc(&agGPU->training_turns, g_p.num_agents * sizeof(unsigned)));
 	for (int iAg = 0; iAg < g_p.num_agents; iAg++) {
-		cudaMemset(agGPU->training_pieces, (unsigned)(1.0f + ranf()*g_p.num_pieces), sizeof(unsigned));
-		cudaMemset(agGPU->training_turns, (unsigned)(2.0f + 1.5f*ranf()*g_p.max_turns), sizeof(unsigned));
+		cudaMemset(agGPU->training_pieces + iAg, (unsigned)(1.0f + ranf()*g_p.num_pieces), sizeof(unsigned));
+		cudaMemset(agGPU->training_turns + iAg, (unsigned)(2.0f + 1.5f*ranf()*g_p.max_turns), sizeof(unsigned));
 	}
 	device_dumpui("agGPU->training_pieces", agGPU->training_pieces, g_p.num_agents, 1);
 	device_dumpui("agGPU->training_turns", agGPU->training_turns, g_p.num_agents, 1);
