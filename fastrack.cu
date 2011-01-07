@@ -457,9 +457,14 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 	unsigned *h_training_pieces = (unsigned *)malloc(g_p.num_agents * sizeof(unsigned));
 	unsigned *h_training_turns = (unsigned *)malloc(g_p.num_agents * sizeof(unsigned));
 	for (int iAg = 0; iAg < g_p.num_agents; iAg++) {
-		cudaMemset(agGPU->training_pieces + iAg, (unsigned)(1.0f + ranf()*g_p.num_pieces), sizeof(unsigned));
-		cudaMemset(agGPU->training_turns + iAg, (unsigned)(2.0f + 1.5f*ranf()*g_p.max_turns), sizeof(unsigned));
+		h_training_pieces[iAg] = 1 + ranf()*g_p.num_pieces;
+		h_training_turns[iAg] = 1 + ranf()*g_p.max_turns;
+		printf("[agent %d] training pieces is %d, training turns is %d\n", iAg, h_training_pieces[iAg], h_training_turns[iAg]);
 	}
+	agGPU->training_pieces = device_copyui(h_training_pieces, g_p.num_agents);
+	agGPU->training_turns = device_copyui(h_training_turns, g_p.num_agents);
+	free(h_training_pieces); free(h_training_turns);
+	
 	device_dumpui("agGPU->training_pieces", agGPU->training_pieces, g_p.num_agents, 1);
 	device_dumpui("agGPU->training_turns", agGPU->training_turns, g_p.num_agents, 1);
 
