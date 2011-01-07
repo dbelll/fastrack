@@ -131,7 +131,7 @@ PARAMS read_params(int argc, const char **argv)
 	p.segs_per_session = GET_PARAM("SEGS_PER_SESSION", 1);
 	p.episode_length = GET_PARAM("EPISODE_LENGTH", 256);
 	p.warmup_length = GET_PARAM("WARMUP_LENGTH", 256);
-	p.benchmark_games = GET_PARAM("BENCHMARK_GAMES", 1000);
+	p.benchmark_games = GET_PARAM("BENCHMARK_GAMES", 800);
 	p.benchmark_freq = GET_PARAM("BENCHMARK_FREQ", 4);
 	p.iChamp = GET_PARAM("ICHAMP", 0);
 	p.champ = champs[p.iChamp];
@@ -140,6 +140,7 @@ PARAMS read_params(int argc, const char **argv)
 	p.determine_best_op_freq = GET_PARAM("DETERMINE_BEST_OP_FREQ", p.standings_freq);
 	p.begin_using_best_ops = GET_PARAM("BEGIN_USING_BEST_OPS", 100000);
 	p.num_opponents = GET_PARAM("NUM_OPPONENTS", p.num_agents > 4 ? 4 : p.num_agents);
+	p.benchmark_ops = GET_PARAM("BENCHMARK_OPS", p.num_opponents);
 	int op_method = GET_PARAM("OP_METHOD", OM_FIXED1);
 	switch (op_method) {
 		case OM_SELF:
@@ -163,6 +164,7 @@ PARAMS read_params(int argc, const char **argv)
 			break;
 	}
 	p.half_opponents = halfpow2(p.num_opponents);
+	p.half_benchmark_ops = halfpow2(p.benchmark_ops);
 	if (p.num_opponents > MAX_OPPONENTS) p.num_opponents = MAX_OPPONENTS;
 	p.opgrid = (unsigned *)malloc(p.num_agents * p.num_opponents * sizeof(unsigned));
 	p.op_fraction = p.num_agents / p.num_opponents;

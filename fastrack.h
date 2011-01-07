@@ -110,6 +110,7 @@ typedef struct {
 	unsigned warmup_length;		// number of time steps for initial training against RAND
 	unsigned iChamp;			// index into the champs to be used for benchmarking
 	unsigned benchmark_games;	// number of games to play vs. champ after each learning session
+	unsigned benchmark_ops;		// number of opponents used for benchmarking
 	unsigned benchmark_freq;	// the frequency of running the benchmark, in number of sessions
 	unsigned standings_freq;	// the fequency of determining the standings and reseting agent w-l stats
 	unsigned refresh_op_wgts_freq;	// the frequency for refreshing the opponents wgts used for learning
@@ -122,6 +123,7 @@ typedef struct {
 								// = num_agents / op_fraction
 	enum OPPONENT_METHODS op_method;	// opponent assignment method
 	unsigned half_opponents;	// largest power of 2 less than num_opponents
+	unsigned half_benchmark_ops;
 	unsigned *opgrid;			// the oppoents each agent will learn against (segs_per_session * num_opponents)
 	unsigned *d_opgrid;			// device pointer to where opponent grid is stored in global memory
 	unsigned run_on_CPU;		// flags
