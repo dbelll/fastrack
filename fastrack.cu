@@ -458,6 +458,8 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 		cudaMemset(agGPU->training_pieces, (unsigned)(1.0f + ranf()*g_p.num_pieces), sizeof(unsigned));
 		cudaMemset(agGPU->training_turns, (unsigned)(2.0f + 1.5f*ranf()*g_p.max_turns), sizeof(unsigned));
 	}
+	device_dumpui("agGPU->training_pieces", agGPU->training_pieces, g_p.num_agents, 1);
+	device_dumpui("agGPU->training_turns", agGPU->training_turns, g_p.num_agents, 1);
 
 #ifndef USE_TEXTURE_FOR_MOVES
 	int *d_g_moves = device_copyi(g_moves, g_p.board_size * MAX_MOVES);
