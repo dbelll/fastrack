@@ -451,6 +451,13 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 	unsigned max_ops = g_p.num_opponents > g_p.benchmark_ops ? g_p.num_opponents : g_p.benchmark_ops;
 	printf("num_opponents is %d, benchmark_ops is %d so max_ops is %d\n", g_p.num_opponents, g_p.benchmark_ops, max_ops);
 	CUDA_SAFE_CALL(cudaMalloc(&agGPU->wl, g_p.num_agents * max_ops * sizeof(WON_LOSS)));
+	
+	CUDA_SAFE_CALL(cudaMalloc(&agGPU->training_pieces, g_p.num_agents * sizeof(unsigned)));
+	CUDA_SAFE_CALL(cudaMalloc(&agGPU->training_turns, g_p.num_agents * sizeof(unsigned)));
+	for (int iAg = 0; iAg < g_p.num_agents; iAg++) {
+		cudaMemset(agGPU->training_pieces, (unsigned)(1.0f + ranf()*g_p.num_pieces), sizeof(unsigned));
+		cudaMemset(agGPU->training_turns, (unsigned)(2.0f + 1.5f*ranf()*g_p.max_turns), sizeof(unsigned));
+	}
 
 #ifndef USE_TEXTURE_FOR_MOVES
 	int *d_g_moves = device_copyi(g_moves, g_p.board_size * MAX_MOVES);
@@ -2006,7 +2013,7 @@ __global__ void compete_kernel(unsigned *seeds, float *wgts, float *opwgts, WON_
 
 }
 
-__global__ void old_learn_kernel(unsigned *seeds, float *wgts, float *e, float *saved_wgts, WON_LOSS *wl, float *delta_wgts, unsigned *d_ops, unsigned reset_stats)
+__global__ void old_learn_kernel(unsigned *seeds, float *wgts, float *e, float *saved_wgts, WON_LOSS *wl, float *delta_wgts, unsigned *d_ops, unsigned reset_stats, unsigned *max_turns)
 {
 	unsigned idx = threadIdx.x;
 	unsigned iAgent = blockIdx.x;
@@ -2096,7 +2103,7 @@ __global__ void old_learn_kernel(unsigned *seeds, float *wgts, float *e, float *
 		
 //		break;	// exit 2
 		
-		if (s_terminal || (turn == dc_max_turns)) {
+		if (s_terminal || (turn == max_turns[iAgent])) {
 
 //			break;	// exit 5
 
@@ -2527,7 +2534,7 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 		
 			RESUME_TIMER(gpuLearnTimer);
 			PRE_KERNEL2("old_learn_kernel", learnBlockDim, learnGridDim);
-			old_learn_kernel<<<learnGridDim, learnBlockDim, dynamic_shared_mem()>>>(agGPU->seeds, agGPU->wgts, agGPU->e, agGPU->saved_wgts, agGPU->wl, agGPU->delta_wgts, g_p.d_opgrid + iSeg * g_p.num_opponents, (0 == iSeg && 0 == iSession % g_p.standings_freq));
+			old_learn_kernel<<<learnGridDim, learnBlockDim, dynamic_shared_mem()>>>(agGPU->seeds, agGPU->wgts, agGPU->e, agGPU->saved_wgts, agGPU->wl, agGPU->delta_wgts, g_p.d_opgrid + iSeg * g_p.num_opponents, (0 == iSeg && 0 == iSession % g_p.standings_freq), agGPU->training_turns);
 			POST_KERNEL(old_learn_kernel);
 			
 			cudaThreadSynchronize();

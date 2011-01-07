@@ -175,6 +175,8 @@ typedef struct{
 	unsigned *next_to_play; // 0 ==> X, 1 ==> O (num_agents)
 	WON_LOSS *wl;		// temporary area to store won-loss information prior to reducing
 						// (num_agents * num_opponents * sizeof(WON_LOSS)
+	unsigned *training_pieces;	// number of pieces per side to learn with
+	unsigned *training_turns;		// maximum number of moves per game
 } AGENT;
 
 //typedef struct {
