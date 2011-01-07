@@ -457,8 +457,8 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 	unsigned *h_training_pieces = (unsigned *)malloc(g_p.num_agents * sizeof(unsigned));
 	unsigned *h_training_turns = (unsigned *)malloc(g_p.num_agents * sizeof(unsigned));
 	for (int iAg = 0; iAg < g_p.num_agents; iAg++) {
-		h_training_pieces[iAg] = 1 + ranf()*g_p.num_pieces;
-		h_training_turns[iAg] = 1 + ranf()*g_p.max_turns;
+		h_training_pieces[iAg] = 1 + 2*ranf()*g_p.num_pieces;
+		h_training_turns[iAg] = h_training_pieces[iAg] + 2*ranf()*g_p.max_turns;
 		printf("[agent %d] training pieces is %d, training turns is %d\n", iAg, h_training_pieces[iAg], h_training_turns[iAg]);
 	}
 	agGPU->training_pieces = device_copyui(h_training_pieces, g_p.num_agents);
