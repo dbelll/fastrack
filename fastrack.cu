@@ -1761,9 +1761,8 @@ __device__ void take_random_actionGPU(unsigned *s_state, float *s_temp, float *s
 }
 
 // update the opponent array, g_p.opgrid, using the specified method
-void update_opgrid(enum OPPONENT_METHODS method, void *param)
+void update_opgrid(enum OPPONENT_METHODS method, WON_LOSS *lastStandings, unsigned param)
 {
-	WON_LOSS *lastStandings = NULL;
 	switch (method) {
 		// opgrid is be segment and opponent, so can't code the self agent number
 //		case OM_SELF:	// compete against self (param not used)
@@ -1794,8 +1793,7 @@ void update_opgrid(enum OPPONENT_METHODS method, void *param)
 		case OM_BEST:	// compete against the best agents from the previous standings
 						//(param is pointer to lastStandings)
 			printf("updating opponents: OM_BEST\n");
-			if (!param) return update_opgrid(OM_FIXED1, param);
-			lastStandings = (WON_LOSS *)param;
+			if (!lastStandings) return update_opgrid(OM_FIXED1, NULL, param);
 			for (int iSeg = 0; iSeg < g_p.num_agents; iSeg++) {
 				for (int iOp = 0; iOp < g_p.num_opponents; iOp++) {
 					g_p.opgrid[iSeg * g_p.num_opponents + iOp] = lastStandings[iOp].agent;
@@ -1806,7 +1804,7 @@ void update_opgrid(enum OPPONENT_METHODS method, void *param)
 			printf("updating opponents: OM_ONE\n");
 			for (int iSeg = 0; iSeg < g_p.num_agents; iSeg++) {
 				for (int iOp = 0; iOp < g_p.num_opponents; iOp++) {
-					g_p.opgrid[iSeg * g_p.num_opponents + iOp] = (unsigned)param;
+					g_p.opgrid[iSeg * g_p.num_opponents + iOp] = param;
 				}
 			}
 			break;
@@ -2494,7 +2492,7 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 	PAUSE_TIMER(gpuStandingsTimer);
 
 	// update the opponent array
-	update_opgrid(g_p.op_method, NULL);
+	update_opgrid(g_p.op_method, NULL, 0);
 	
 	timing_feedback_header(g_p.standings_freq);
 
@@ -2610,7 +2608,7 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 		if ((1+iSession) >= g_p.begin_using_best_ops && 0 == ((1+iSession) % g_p.determine_best_op_freq)){
 			printf("\n>>>>>>>>>>>>>>> update opponent grid\n");
 			// put the best opponents in g_p.opgrid then copy to the device
-			update_opgrid(OM_BEST, lastStandings);
+			update_opgrid(OM_BEST, lastStandings, 0);
 //			for (int iAg = 0; iAg < g_p.num_agents; iAg++) {
 //				for (int iOp = 0; iOp < g_p.num_opponents; iOp++) {
 //					g_p.opgrid[iAg * g_p.num_opponents + iOp] = lastStandings[iOp].agent;
