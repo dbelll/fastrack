@@ -533,7 +533,7 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 //	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_opgrid", g_p.opgrid, g_p.sges_per_session * g_p.num_opponents * sizeof(unsigned)));
 
 	// copy the best opponent array to global device memory
-	g_p.d_opgrid = device_copyui(g_p.opgrid, g_p.num_opponents * g_p.num_agents);
+	g_p.d_opgrid = device_copyui(g_p.opgrid, g_p.num_opponents * g_p.segs_per_session);
 	dump_opponent_array();
 	
 #ifdef USE_TEXTURE_FOR_MOVES
