@@ -1264,7 +1264,7 @@ RESULTS *runCPU(AGENT *agCPU, float *champ_wgts)
 
 void dump_opponent_array()
 {
-	unsigned *opgrid = host_copyui(g_p.d_opgrid, g_p.num_opponents * g_p.num_agents);
+	unsigned *opgrid = host_copyui(g_p.d_opgrid, g_p.num_opponents * g_p.segs_per_session);
 	printf("opponents in g_p.d_opgrid:\n");
 	for (int iSeg = 0; iSeg < g_p.segs_per_session; iSeg++) {
 		printf("[Segment%3d] ", iSeg);
