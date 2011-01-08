@@ -1930,8 +1930,14 @@ __global__ void copy_wgts_kernel(float *wgts, float *saved_wgts)
 		saved_wgts[iGlobal] = wgts[iGlobal];
 	}
 }
+/*
+	Compete (without learning) against a benchmark opponent, or against other agents.
+	If round_robin flag is on, the opwgts points to agent weights and the iOpponet value indexes
+	into it to obtain the opponent weights for the competition.
+	If round_robin flag is off, then opwgts is pointing to the single benchmark opponent's weights.
+*/
 
-__global__ void compete_kernel(unsigned *seeds, float *wgts, float *opwgts, WON_LOSS *wl)
+__global__ void compete_kernel(unsigned *seeds, float *wgts, float *opwgts, WON_LOSS *wl, unsigned round_robin)
 {
 	unsigned idx = threadIdx.x;
 	unsigned iAgent = blockIdx.x;
@@ -1971,7 +1977,7 @@ __global__ void compete_kernel(unsigned *seeds, float *wgts, float *opwgts, WON_
 	s_seeds[idx + 3*dc_board_size] = seeds[iAgent * 4 * dc_board_size + idx + 3*dc_board_size]+ (blockIdx.y << 4);
 	
 	copy_wgts_to_s(wgts + iAgent * dc_wgts_stride, s_wgts);
-	copy_wgts_to_s(opwgts, s_opwgts);
+	copy_wgts_to_s(round_robin ? (opwgts + iOpponent * dc_wgts_stride) : opwgts, s_opwgts);
 
 	unsigned turn = 0;
 
@@ -2040,7 +2046,8 @@ __global__ void old_learn_kernel(unsigned *seeds, float *wgts, float *e, float *
 	unsigned iAgent = blockIdx.x;
 	// blockIdx.y is the index into the row of the opponent array for this agent
 	// iOpponent is the agent number of the opponenent for this episode
-	unsigned iOpponent = d_ops[blockIdx.y];
+//	unsigned iOpponent = d_ops[blockIdx.y];
+	unsigned iOpponent = blockIdx.y + iAgent & ~(dc_num_opponents-1);
 	
 	// static shared memory
 	__shared__ float s_rand;
@@ -2596,7 +2603,7 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 			RESUME_TIMER(gpuCompeteTimer);
 //			device_dumpui("agGPU->wl", (unsigned *)agGPU->wl, g_p.num_agents * g_p.benchmark_ops, 4);
 			PRE_KERNEL2("compete_kernel", competeBlockDim, competeGridDim);
-			compete_kernel<<<competeGridDim, competeBlockDim, dynamic_shared_mem()>>>(agGPU->seeds, agGPU->wgts, d_champ_wgts, agGPU->wl);
+			compete_kernel<<<competeGridDim, competeBlockDim, dynamic_shared_mem()>>>(agGPU->seeds, agGPU->wgts, d_champ_wgts, agGPU->wl, 0);
 			POST_KERNEL(compete_kernel);
 
 //			printf("\n>>>>>>>>>>>>>>> reduce_wl\n");
