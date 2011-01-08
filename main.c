@@ -218,6 +218,7 @@ int main(int argc, const char **argv)
 	}
 
 	// load champ weights for benchmark testing
+	printf("champ for benchmark: %s\n", p.champ);
 	float *champ_wgts = load_champ(p.champ);
 //	dump_agentsCPU("after load_champ", agCPU, 0, 0);
 	
