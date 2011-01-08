@@ -143,23 +143,26 @@ PARAMS read_params(int argc, const char **argv)
 	p.benchmark_ops = GET_PARAM("BENCHMARK_OPS", p.num_opponents);
 	int op_method = GET_PARAM("OP_METHOD", OM_FIXED1);
 	switch (op_method) {
-		case OM_SELF:
-			p.op_method = OM_SELF;
-			break;
+//		case OM_SELF:
+//			p.op_method = OM_SELF;
+//			break;
 		case OM_FIXED1:
 			p.op_method = OM_FIXED1;
 			break;
 		case OM_FIXED2:
 			p.op_method = OM_FIXED2;
 			break;
-		case OM_BEST:
-			p.op_method = OM_BEST;
+		case OM_BEST1:
+			p.op_method = OM_BEST1;
 			break;
-		case OM_ONE:
-			p.op_method = OM_ONE;
+		case OM_BEST2:
+			p.op_method = OM_BEST2;
 			break;
+//		case OM_ONE:
+//			p.op_method = OM_ONE;
+//			break;
 		default:
-			printf("*** ERROR *** Unknown opponent assignment method\n");
+			printf("*** ERROR *** Unknown (or un-implemented) opponent assignment method\n");
 			exit(-1);
 			break;
 	}

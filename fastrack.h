@@ -38,12 +38,51 @@
 #define ALPHA_HALF_LIFE 20
 
 enum OPPONENT_METHODS {
-	OM_SELF=0,		// 0
+	OM_SELF=0,		// 0		// not implemented
 	OM_FIXED1,		// 1
 	OM_FIXED2,		// 2
-	OM_BEST,		// 3
-	OM_ONE,			// 4
+	OM_BEST1,		// 3
+	OM_BEST2,		// 4
+	OM_ONE,			// 5
 };
+
+/*
+	Illustration of opponent methods for num_opponents = 4 and segs_per_session = 6
+							<------- run in parallel ----->
+							  op-0	  op-1	  op-2	  op-3
+		OM_FIXED1	seg0		0		1		2		3
+					seg1		0		1		2		3
+					seg2		0		1		2		3
+					seg3		0		1		2		3
+					seg4		0		1		2		3
+					seg5		0		1		2		3
+
+							  op-0	  op-1	  op-2	  op-3
+		OM_FIXED2	seg0		0		0		0		0
+					seg1		1		1		1		1
+					seg2		2		2		2		2
+					seg3		3		3		3		3
+					seg4		4		4		4		4
+					seg5		5		5		5		5
+ 
+								op-0		 op-1		  op-2		   op-3
+		OM_BEST1	seg0	standings[0] standings[1] standings[2] standings[3]
+					seg1	standings[0] standings[1] standings[2] standings[3]
+					seg2	standings[0] standings[1] standings[2] standings[3]
+					seg3	standings[0] standings[1] standings[2] standings[3]
+					seg4	standings[0] standings[1] standings[2] standings[3]
+					seg5	standings[0] standings[1] standings[2] standings[3]
+
+							    op-0		 op-1		  op-2		   op-3
+		OM_BEST2	seg0	standings[0] standings[0] standings[0] standings[0]
+					seg1	standings[1] standings[1] standings[1] standings[1]
+					seg2	standings[2] standings[2] standings[2] standings[2]
+					seg3	standings[3] standings[3] standings[3] standings[3]
+					seg4	standings[4] standings[4] standings[4] standings[4]
+					seg5	standings[5] standings[5] standings[5] standings[5]
+ 
+ */
+
 
 // piece move definitions
 #define MOVES_KNIGHT {{1, 2}, {2, 1}, {2, -1}, {1, -2}, {-1, -2}, {-2, -1}, {-2, 1}, {-1, 2}}
@@ -121,6 +160,7 @@ typedef struct {
 								// 2 ==> use 1/2 of agents, 4 ==> use 1/4, etc.
 	unsigned num_opponents;		// the number of opponents each session
 								// = num_agents / op_fraction
+	unsigned num_replace;		// number of agents replaced by copies of best agents whenever the standings are determined
 	enum OPPONENT_METHODS op_method;	// opponent assignment method
 	unsigned half_opponents;	// largest power of 2 less than num_opponents
 	unsigned half_benchmark_ops;

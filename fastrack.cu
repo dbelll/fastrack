@@ -457,8 +457,10 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 	unsigned *h_training_pieces = (unsigned *)malloc(g_p.num_agents * sizeof(unsigned));
 	unsigned *h_training_turns = (unsigned *)malloc(g_p.num_agents * sizeof(unsigned));
 	for (int iAg = 0; iAg < g_p.num_agents; iAg++) {
-		h_training_pieces[iAg] = 1 + 2*ranf()*g_p.num_pieces;
-		h_training_turns[iAg] = h_training_pieces[iAg] + 2*ranf()*g_p.max_turns;
+//		h_training_pieces[iAg] = 2 + 2*ranf()*g_p.num_pieces;
+//		h_training_turns[iAg] = h_training_pieces[iAg] + 1 + ranf()*g_p.max_turns;
+		h_training_pieces[iAg] = g_p.num_pieces;
+		h_training_turns[iAg] = g_p.max_turns;
 		printf("[agent %d] training pieces is %d, training turns is %d\n", iAg, h_training_pieces[iAg], h_training_turns[iAg]);
 	}
 	agGPU->training_pieces = device_copyui(h_training_pieces, g_p.num_agents);
@@ -1802,17 +1804,27 @@ void update_opgrid(enum OPPONENT_METHODS method, WON_LOSS *lastStandings, unsign
 			printf("updating opponents: OM_FIXED2\n");
 			for (int iSeg = 0; iSeg < g_p.num_agents; iSeg++) {
 				for (int iOp = 0; iOp < g_p.num_opponents; iOp++) {
-					g_p.opgrid[iSeg * g_p.num_opponents + iOp] = iSeg % g_p.num_opponents;
+					g_p.opgrid[iSeg * g_p.num_opponents + iOp] = iSeg % g_p.num_agents;
 				}
 			}
 			break;
-		case OM_BEST:	// compete against the best agents from the previous standings
+		case OM_BEST1:	// compete against the best agents from the previous standings
 						//(param is pointer to lastStandings)
-			printf("updating opponents: OM_BEST\n");
+			printf("updating opponents: OM_BEST1\n");
 			if (!lastStandings) return update_opgrid(OM_FIXED1, NULL, param);
 			for (int iSeg = 0; iSeg < g_p.num_agents; iSeg++) {
 				for (int iOp = 0; iOp < g_p.num_opponents; iOp++) {
 					g_p.opgrid[iSeg * g_p.num_opponents + iOp] = lastStandings[iOp].agent;
+				}
+			}
+			break;
+		case OM_BEST2:	// compete against the best agents from the previous standings
+						//(param is pointer to lastStandings)
+			printf("updating opponents: OM_BEST2\n");
+			if (!lastStandings) return update_opgrid(OM_FIXED2, NULL, param);
+			for (int iSeg = 0; iSeg < g_p.num_agents; iSeg++) {
+				for (int iOp = 0; iOp < g_p.num_opponents; iOp++) {
+					g_p.opgrid[iSeg * g_p.num_opponents + iOp] = lastStandings[iSeg % g_p.num_agents].agent;
 				}
 			}
 			break;
@@ -2622,16 +2634,10 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 		}
 		
 		// update the opponents used in learning
-		if ((1+iSession) >= g_p.begin_using_best_ops && 0 == ((1+iSession) % g_p.determine_best_op_freq)){
+		if ((g_p.op_method == OM_BEST1 || g_p.op_method == OM_BEST2) && (1+iSession) >= g_p.begin_using_best_ops && 0 == ((1+iSession) % g_p.determine_best_op_freq)){
 			printf("\n>>>>>>>>>>>>>>> update opponent grid\n");
 			// put the best opponents in g_p.opgrid then copy to the device
-			update_opgrid(OM_BEST, lastStandings, 0);
-//			for (int iAg = 0; iAg < g_p.num_agents; iAg++) {
-//				for (int iOp = 0; iOp < g_p.num_opponents; iOp++) {
-//					g_p.opgrid[iAg * g_p.num_opponents + iOp] = lastStandings[iOp].agent;
-//				}
-//			}
-//			CUDA_SAFE_CALL(cudaMemcpy(g_p.d_opgrid, g_p.opgrid, g_p.num_opponents * g_p.segs_per_session * sizeof(unsigned), cudaMemcpyHostToDevice)); 
+			update_opgrid(g_p.op_method, lastStandings, 0);
 		}
 		cudaThreadSynchronize();
 		PAUSE_TIMER(gpuStandingsTimer);
