@@ -450,7 +450,7 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 	// Temporary won-loss area stores the results for opponents run in parallel (num_opponents),
 	// and also for the benchmark compete results run in parallel (benchmark_ops), so have to
 	// allocate temporary area large enough to hold the greater of num_opponents and benchmark_ops.
-	unsigned max_ops = g_p.num_opponents > g_p.benchmark_ops ? g_p.num_opponents : g_p.benchmark_ops;
+	unsigned max_ops = (g_p.num_opponents > g_p.benchmark_ops) ? g_p.num_opponents : g_p.benchmark_ops;
 	printf("num_opponents is %d, benchmark_ops is %d so max_ops is %d\n", g_p.num_opponents, g_p.benchmark_ops, max_ops);
 	CUDA_SAFE_CALL(cudaMalloc(&agGPU->wl, g_p.num_agents * max_ops * sizeof(WON_LOSS)));
 	
@@ -1889,6 +1889,7 @@ __global__ void reduce_wl_kernel(WON_LOSS *wl, WON_LOSS *wl_tot, unsigned num_op
 	s_games[idx] = wl[iAgent * num_ops + idx].games;
 	s_wins[idx] = wl[iAgent * num_ops + idx].wins;
 	s_losses[idx] = wl[iAgent * num_ops + idx].losses;
+	__syncthreads();
 	
 	// reduce the values in shared memory
 //	unsigned half = dc_half_opponents;
@@ -1898,6 +1899,7 @@ __global__ void reduce_wl_kernel(WON_LOSS *wl, WON_LOSS *wl_tot, unsigned num_op
 		s_wins[idx] += s_wins[idx + half];
 		s_losses[idx] += s_losses[idx + half];
 	}
+	__syncthreads();
 	while (0 < (half >>= 1)) {
 		if (idx < half){
 			s_games[idx] += s_games[idx + half];
