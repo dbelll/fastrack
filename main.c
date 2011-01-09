@@ -68,6 +68,8 @@ void dump_params(PARAMS p)
 	printf("   init_wgt_max     %7.4f\n", p.init_wgt_max);
 	printf("learning parameters:\n");
 	printf("   num_agents       %7d\n", p.num_agents);
+	printf("   min_pieces       %7d\n", p.min_pieces);
+	printf("   max_pieces       %7d\n", p.max_pieces);
 	printf("   op_fraction      %7d\n", p.op_fraction);
 	printf("   num_sessions     %7d\n", p.num_sessions);
 	printf("   episode_length   %7d\n", p.episode_length);
@@ -104,6 +106,8 @@ PARAMS read_params(int argc, const char **argv)
 		printf("***ERROR*** Board size (%d x %d) exceeds maximum allowable dimensions\n", p.board_width, p.board_height); exit(-1);
 	}
 	p.num_pieces = GET_PARAM("NUM_PIECES", p.board_width);
+	p.min_pieces = GET_PARAM("MIN_PIECES", p.num_pieces);
+	p.max_pieces = GET_PARAM("MAX_PIECES", p.num_pieces);
 	p.max_turns = GET_PARAM("MAX_TURNS", 10);
 	p.board_size = p.board_width * p.board_height;	// number of cells on the board
 	p.state_size = 2 * p.board_size;

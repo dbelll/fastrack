@@ -17,6 +17,8 @@ __constant__ unsigned dc_num_opponents;
 __constant__ unsigned dc_half_opponents;
 __constant__ unsigned dc_num_hidden;
 __constant__ unsigned dc_num_pieces;
+__constant__ unsigned dc_min_pieces;
+__constant__ unsigned dc_max_pieces;
 __constant__ unsigned dc_state_size;
 __constant__ unsigned dc_board_size;
 __constant__ unsigned dc_half_board_size;

@@ -128,6 +128,8 @@ typedef struct {
 	unsigned num_pieces;		// pieces per side, random location at start of game,
 								// value of 0 means used fixed starting position of first row
 								// filled for each player
+	unsigned min_pieces;		// minimum number of pieces for training
+	unsigned max_pieces;		// maximum number of pieces for training
 	unsigned max_turns;			// maximum turns per game
 	unsigned seed;				// seed value used to generate global seeds (which are then
 								// used to generate each agents seeds)
