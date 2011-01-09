@@ -1,5 +1,9 @@
 Today's Goals
 
+Questions:
+	Will replacing poor agents with copies of best agents help or hurt overall learning?
+	Will modifying poor agents' parameters help or hurt
+	What is the best number of parallel opponents?
 
 Must do:
 
@@ -9,45 +13,32 @@ Must do:
 	
 	Re-organize global memory layout of weights to match shared memory layout
 	
-
 	Use twice as many threads in the learn kernel to speed up wgt copying.  The threads beyond
 	dc_board_size then do nothing during learning.
-	
-	Add a parameter to parallel benchmark to specify the number of simultaneous threads
 	
 	Add an alternative benchmark of playing all the opponents (with learning off) - run this in parallel
 	
 	Create fixed baseline that shows good learning
 	
-	Within on learning session, allow multiple episodes of learning against opponents in parallel and then reducing the results,
-		First, modify learn_kernel to either reset the stats, or read them from global memory and add them.
-		
 	Test GPUs random move generator
 	implement random warm-up on GPU
 
-	Review code for memory leaks
+	Review code for memory leaks oh host and device
 
 	build a program to test agents on set board positions
 	
 	put dc_opgrid back to constant memory
-	
-	Fix standings spreadsheet to accomodate benchmark frequency
 	
 	Use the macros to get values from AGENT data
 		
 	Reduce the number of arguments by storing the pointer to AGENT *agGPU in constant memory and
 	calculating the other pointers from it.
 	
->>>>>>	On GPU - add multiple, simultaneous learning for each agent with sharing of results.
-		Learn vs. each opponent simultaneously, storing the change in weights to global memory
-		Calculate total change in weights accross all opponents and update agents weights with the total change
-		
-		?? Divide the 
-		
 	Compete against best agents from previous _2_ rounds
 	
 	Replicate the best agents with changes to alpha and/or lambda.
 
+	Modify the parameters for worst agents
 
 
 Todo's
