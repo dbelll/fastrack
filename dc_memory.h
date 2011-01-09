@@ -15,7 +15,6 @@ __constant__ float dc_gamma;
 __constant__ unsigned dc_num_agents;
 __constant__ unsigned dc_num_opponents;
 __constant__ unsigned dc_half_opponents;
-__constant__ unsigned dc_half_benchmark_ops;
 __constant__ unsigned dc_num_hidden;
 __constant__ unsigned dc_num_pieces;
 __constant__ unsigned dc_state_size;
@@ -42,6 +41,7 @@ __constant__ unsigned dc_max_turns;
 __constant__ unsigned dc_episode_length;
 __constant__ unsigned dc_benchmark_games_per_op;
 __constant__ unsigned dc_benchmark_ops;
+__constant__ unsigned dc_half_benchmark_ops;
 
 //__constant__ unsigned dc_opgrid[MAX_OPPONENTS];
 
@@ -53,3 +53,5 @@ static cudaArray *d_moves;
 #else
 __constant__ int *dc_moves;			// pointer to d_g_moves array on device
 #endif
+
+

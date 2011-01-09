@@ -138,7 +138,7 @@ PARAMS read_params(int argc, const char **argv)
 	p.standings_freq = GET_PARAM("STANDINGS_FREQ", p.benchmark_freq);
 	p.refresh_op_wgts_freq = GET_PARAM("REFRESH_OP_WGTS_FREQ", 1);
 	p.determine_best_op_freq = GET_PARAM("DETERMINE_BEST_OP_FREQ", p.standings_freq);
-	p.begin_using_best_ops = GET_PARAM("BEGIN_USING_BEST_OPS", 100000);
+	p.begin_using_best_ops = GET_PARAM("BEGIN_USING_BEST_OPS", 1000000);
 	p.num_opponents = GET_PARAM("NUM_OPPONENTS", p.num_agents > 4 ? 4 : p.num_agents);
 	p.benchmark_ops = GET_PARAM("BENCHMARK_OPS", p.num_opponents);
 	int op_method = GET_PARAM("OP_METHOD", OM_FIXED1);
