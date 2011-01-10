@@ -177,11 +177,13 @@ void print_standings(AGENT *ag, WON_LOSS *standings, WON_LOSS *vsChamp)
 	for (int i = 0; i < g_p.num_agents; i++) {
 		//			printf("agent%4d  %4d %4d %4d  %5.3f", standings[i].agent, standings[i].games, standings[i].wins, standings[i].losses, 0.5f * (1.0f + (float)(standings[i].wins - standings[i].losses) / (float)standings[i].games));
 		unsigned iAgent = standings[i].agent;
+
 		printf("standings place %d is agent %d\n", i,iAgent);
 		printf("   training_pieces %d\n", ag->training_pieces[iAgent]);
 		printf("             games %d\n", standings[i].games);
 		printf("               won %d\n", standings[i].wins);
 		printf("              loss %d\n", standings[i].losses);
+
 		printf("agent%4d[tp=%2d] %6u %6u %6u  %5.3f", iAgent, ag->training_pieces[iAgent], standings[i].games, standings[i].wins, standings[i].losses, winpct(standings[i]));
 		
 		totStand.games += standings[i].games;
