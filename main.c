@@ -70,7 +70,9 @@ void dump_params(PARAMS p)
 	printf("   num_agents       %7d\n", p.num_agents);
 	printf("   min_pieces       %7d\n", p.min_pieces);
 	printf("   max_pieces       %7d\n", p.max_pieces);
-	printf("   op_fraction      %7d\n", p.op_fraction);
+	printf("   min_alpha		%7.4f\n", p.min_alpha);
+	printf("   max_alpha		%7.4f\n", p.max_alpha);
+	printf("   num_opponents    %7d\n", p.num_opponents);
 	printf("   num_sessions     %7d\n", p.num_sessions);
 	printf("   episode_length   %7d\n", p.episode_length);
 	printf("   warmup_length    %7d\n", p.warmup_length);
@@ -126,6 +128,8 @@ PARAMS read_params(int argc, const char **argv)
 	p.half_hidden = halfpow2(p.num_hidden);
 
 	p.alpha = GET_PARAMF("ALPHA", .20f);
+	p.min_alpha = GET_PARAMF("MIN_ALPHA", p.alpha);
+	p.max_alpha = GET_PARAMF("MAX_ALPHA", p.alpha);
 	p.epsilon = GET_PARAMF("EPSILON", .10f);
 	p.gamma = GET_PARAMF("GAMMA", .95f);
 	p.lambda = GET_PARAMF("LAMBDA", .50f);
@@ -133,9 +137,9 @@ PARAMS read_params(int argc, const char **argv)
 	p.num_agents = GET_PARAM("NUM_AGENTS", 64);
 	p.num_sessions = GET_PARAM("NUM_SESSIONS", 16);	
 	p.segs_per_session = GET_PARAM("SEGS_PER_SESSION", 1);
-	p.episode_length = GET_PARAM("EPISODE_LENGTH", 256);
-	p.warmup_length = GET_PARAM("WARMUP_LENGTH", 256);
-	p.benchmark_games = GET_PARAM("BENCHMARK_GAMES", 800);
+	p.episode_length = GET_PARAM("EPISODE_LENGTH", 16);
+	p.warmup_length = GET_PARAM("WARMUP_LENGTH", 0);
+	p.benchmark_games = GET_PARAM("BENCHMARK_GAMES", 400);
 	p.benchmark_freq = GET_PARAM("BENCHMARK_FREQ", 4);
 	p.iChamp = GET_PARAM("ICHAMP", 0);
 	p.champ = champs[p.iChamp];

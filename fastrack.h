@@ -140,6 +140,8 @@ typedef struct {
 	
 	// learning parameters
 	float alpha;				// default learning rate
+	float min_alpha;
+	float max_alpha;
 	float epsilon;				// default exploration rate
 	float gamma;				// default discount rate
 	float lambda;				// default lambda

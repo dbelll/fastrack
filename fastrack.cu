@@ -379,6 +379,20 @@ void freeAgentCPU(AGENT *ag)
 	}
 }
 
+void init_training_pieces(unsigned *training_pieces, PARAMS *p)
+{
+	for (int iAg = 0; iAg < p->num_agents; iAg++) {
+		training_pieces[iAg] = p->min_pieces + ranf()*(p->max_pieces - p->min_pieces + 1); 
+	}
+}
+
+void init_alpha(float *alpha, PARAMS *p)
+{
+	for (int iAg = 0; iAg < p->num_agents; iAg++) {
+		alpha[iAg] = p->min_alpha + ranf()*(p->max_alpha - p->min_alpha);
+	}
+}
+
 AGENT *init_agentsCPU(PARAMS p)
 {
 	// Save parameters to learning log file
@@ -408,6 +422,7 @@ AGENT *init_agentsCPU(PARAMS p)
 	ag->wgts = (float *)malloc(p.num_agent_floats * p.num_agents * sizeof(float));
 	set_agent_float_pointers(ag);	
 	randomize_agent(ag);
+//	initialize_parameters(ag, p);
 	
 	for (int i = 0; i < p.num_agents; i++) { 
 		set_agent_params(ag, i, p.alpha, p.epsilon, p.lambda); 
@@ -427,9 +442,7 @@ AGENT *init_agentsCPU(PARAMS p)
 	}
 
 	ag->training_pieces = (unsigned *)malloc(p.num_agents * sizeof(unsigned));
-	for (int iAg = 0; iAg < p.num_agents; iAg++) {
-		ag->training_pieces[iAg] = p.min_pieces + iAg % (p.max_pieces - p.min_pieces + 1); 
-	}
+	init_training_pieces(ag->training_pieces, &p);
 	return ag;
 }
 
