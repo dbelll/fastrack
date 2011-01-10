@@ -13,7 +13,7 @@
 	#define the value to enable it's corresponding output
 */
 
-//#define NO_OUTPUT			// define this symbol to turn off all debugging output
+#define NO_OUTPUT			// define this symbol to turn off all debugging output
 
 
 #ifndef NO_OUTPUT

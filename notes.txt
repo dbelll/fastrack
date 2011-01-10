@@ -5,7 +5,13 @@ Questions:
 	Will modifying poor agents' parameters help or hurt
 	What is the best number of parallel opponents?
 
-Must do:
+To do list:
+	Finish varying training_pieces by agent and test the results
+	Add varying training_turns by agent
+	
+	Have agents copy the good agent's parameters if they are doing poorly
+
+Fixes:
 	Fix problem with num_pieces of 1 - must check for terminal condition after the first move.
 
 	Add exploration
