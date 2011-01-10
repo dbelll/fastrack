@@ -431,6 +431,10 @@ AGENT *init_agentsCPU(PARAMS p)
 
 AGENT *init_agentsGPU(AGENT *agCPU)
 {
+	// copy the default start state to the device and save the pointer to device constant memory
+	unsigned *d_start_state = device_copyui(g_start_state, g_p.state_size);
+	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_start_state", &d_start_state, sizeof(unsigned *)));
+	
 	// copy agent data to the GPU
 	AGENT *agGPU = (AGENT *)malloc(sizeof(AGENT));
 	agGPU->seeds = device_copyui(agCPU->seeds, 4 * g_p.num_agents * g_p.board_size);
@@ -1404,8 +1408,19 @@ __device__ void random_board_masked(unsigned *s_board, unsigned *s_mask, unsigne
 // *** Requires board_size threads ***
 __device__ void random_stateGPU(unsigned *s_state, float *s_temp, unsigned *s_seeds, unsigned stride, unsigned num_pieces)
 {
-	random_board(s_state, (unsigned *)s_temp, s_seeds, dc_board_size, num_pieces);
-	random_board_masked(s_state + dc_board_size, s_state, (unsigned *)s_temp, s_seeds, dc_board_size, num_pieces);
+	if (num_pieces == 0){
+		// copy default start state
+		unsigned idx = threadIdx.x;
+		if (idx < dc_board_size) {
+			X_BOARDGPU(s_state)[idx] = X_BOARDGPU(dc_start_state)[idx];
+			O_BOARDGPU(s_state)[idx] = O_BOARDGPU(dc_start_state)[idx];
+		}
+		__syncthreads();
+	}else {
+		random_board(s_state, (unsigned *)s_temp, s_seeds, dc_board_size, num_pieces);
+		random_board_masked(s_state + dc_board_size, s_state, (unsigned *)s_temp, s_seeds, dc_board_size, num_pieces);
+	}
+
 }
 
 // Calculate the reward for a given state, setting the terminal flag, ps_terminal,

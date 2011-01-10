@@ -37,7 +37,8 @@ __constant__ float dc_init_wgt_max;
 // To do a bulk copy or other operation on all weights, must repeate dc_reps_for_wgts times.
 __constant__ unsigned dc_reps_for_wgts;		// = 1 + (num_wgts-1)/board_size
 
-
+// pointer to default start state on device
+__constant__ unsigned *dc_start_state;
 
 __constant__ unsigned dc_max_turns;
 __constant__ unsigned dc_episode_length;
