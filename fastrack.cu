@@ -460,8 +460,13 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 	CUDA_SAFE_CALL(cudaMalloc(&agGPU->training_turns, g_p.num_agents * sizeof(unsigned)));
 	unsigned *h_training_pieces = (unsigned *)malloc(g_p.num_agents * sizeof(unsigned));
 	unsigned *h_training_turns = (unsigned *)malloc(g_p.num_agents * sizeof(unsigned));
+	
+	// set the values for training_pieces and training_turns here
 	for (int iAg = 0; iAg < g_p.num_agents; iAg++) {
-		h_training_pieces[iAg] = g_p.num_pieces;
+		// if max_pieces > min_pieces, assign agents uniformly to values from min_pieces to max_pieces
+		if (g_p.max_pieces > g_p.min_pieces)
+			h_training_pieces[iAg] = g_p.min_pieces + iAg % (g_p.max_pieces - g_p.min_pieces + 1);
+		else h_training_pieces[iAg] = g_p.num_pieces;
 		h_training_turns[iAg] = g_p.max_turns;
 //		printf("[agent %d] training pieces is %d, training turns is %d\n", iAg, h_training_pieces[iAg], h_training_turns[iAg]);
 	}
@@ -1337,7 +1342,7 @@ __device__ void reduce_hidden(float *s_hidden)
 //		seeds points to 1st seed for this agent
 //		stride is the stride of seeds
 // *** Requires board_size threads ***
-__device__ void random_board(unsigned *s_board, unsigned *s_temp, unsigned *seeds, unsigned stride, unsigned full_size)
+__device__ void random_board(unsigned *s_board, unsigned *s_temp, unsigned *seeds, unsigned stride, unsigned num_pieces)
 {
 	unsigned idx = threadIdx.x;
 	
@@ -1354,11 +1359,11 @@ __device__ void random_board(unsigned *s_board, unsigned *s_temp, unsigned *seed
 	// use thread 0 to add/remove pieces to get the correct total
 	if (idx == 0) {
 		unsigned r;
-		while (s_temp[0] > (full_size ? dc_num_pieces : dc_min_pieces)) {
+		while (s_temp[0] > num_pieces) {
 			r = rand_num(dc_board_size, seeds + idx, stride);
 			if (s_board[r] == 1) { s_board[r] = 0; --s_temp[0];}
 		}
-		while (s_temp[0] < (full_size ? dc_num_pieces : dc_min_pieces)) {
+		while (s_temp[0] < num_pieces) {
 			r = rand_num(dc_board_size, seeds + idx, stride);
 			if (s_board[r] == 0) { s_board[r] = 1; ++s_temp[0];}
 		}
@@ -1368,7 +1373,7 @@ __device__ void random_board(unsigned *s_board, unsigned *s_temp, unsigned *seed
 
 // Create a random board, but avoid the cells occupied in s_mask
 // *** Requires board_size threads ***
-__device__ void random_board_masked(unsigned *s_board, unsigned *s_mask, unsigned *s_temp, unsigned *seeds, unsigned stride, unsigned full_size)
+__device__ void random_board_masked(unsigned *s_board, unsigned *s_mask, unsigned *s_temp, unsigned *seeds, unsigned stride, unsigned num_pieces)
 {
 	unsigned idx = threadIdx.x;
 	
@@ -1383,11 +1388,11 @@ __device__ void random_board_masked(unsigned *s_board, unsigned *s_mask, unsigne
 	
 	if (idx == 0) {
 		unsigned r;
-		while (s_temp[0] > (full_size ? dc_num_pieces : dc_max_pieces)) {
+		while (s_temp[0] > num_pieces) {
 			r = rand_num(dc_board_size, seeds + idx, stride);
 			if (s_board[r] == 1) { s_board[r] = 0; --s_temp[0];}
 		}
-		while (s_temp[0] < (full_size ? dc_num_pieces : dc_min_pieces)) {
+		while (s_temp[0] < num_pieces) {
 			r = rand_num(dc_board_size, seeds + idx, stride);
 			if (s_board[r] == 0 && s_mask[r] == 0){ s_board[r] = 1; ++s_temp[0];}
 		}
@@ -1397,10 +1402,10 @@ __device__ void random_board_masked(unsigned *s_board, unsigned *s_mask, unsigne
 
 // Create a random starting state
 // *** Requires board_size threads ***
-__device__ void random_stateGPU(unsigned *s_state, float *s_temp, unsigned *s_seeds, unsigned stride, unsigned full_size)
+__device__ void random_stateGPU(unsigned *s_state, float *s_temp, unsigned *s_seeds, unsigned stride, unsigned num_pieces)
 {
-	random_board(s_state, (unsigned *)s_temp, s_seeds, dc_board_size, full_size);
-	random_board_masked(s_state + dc_board_size, s_state, (unsigned *)s_temp, s_seeds, dc_board_size, full_size);
+	random_board(s_state, (unsigned *)s_temp, s_seeds, dc_board_size, num_pieces);
+	random_board_masked(s_state + dc_board_size, s_state, (unsigned *)s_temp, s_seeds, dc_board_size, num_pieces);
 }
 
 // Calculate the reward for a given state, setting the terminal flag, ps_terminal,
@@ -1963,7 +1968,7 @@ __global__ void copy_wgts_kernel(float *wgts, float *saved_wgts)
 	into it to obtain the opponent weights for the competition.
 	If round_robin flag is off, then opwgts is pointing to the single benchmark opponent's weights.
 */
-__global__ void compete_kernel(unsigned *seeds, float *wgts, float *opwgts, WON_LOSS *wl, unsigned round_robin)
+__global__ void compete_kernel(unsigned *seeds, float *wgts, float *opwgts, WON_LOSS *wl)
 {
 	unsigned idx = threadIdx.x;
 	unsigned iAgent = blockIdx.x;
@@ -2002,12 +2007,12 @@ __global__ void compete_kernel(unsigned *seeds, float *wgts, float *opwgts, WON_
 	s_seeds[idx + 3*dc_board_size] = seeds[iAgent * 4 * dc_board_size + idx + 3*dc_board_size]+ (blockIdx.y << 4);
 	
 	copy_wgts_to_s(wgts + iAgent * dc_wgts_stride, s_wgts);
-	copy_wgts_to_s(round_robin ? (opwgts + iOpponent * dc_wgts_stride) : opwgts, s_opwgts);
+	copy_wgts_to_s(opwgts, s_opwgts);
 
 	unsigned turn = 0;
 
 	// set up initial random state
-	random_stateGPU(s_state, s_temp, s_seeds, dc_board_size, 1);
+	random_stateGPU(s_state, s_temp, s_seeds, dc_board_size, dc_max_pieces);
 
 	if (idx == 0){
 		s_rand = RandUniform(s_seeds, dc_board_size);
@@ -2037,7 +2042,7 @@ __global__ void compete_kernel(unsigned *seeds, float *wgts, float *opwgts, WON_
 				s_rand = RandUniform(s_seeds, dc_board_size);
 			}
 			__syncthreads();
-			random_stateGPU(s_state, s_temp, s_seeds, dc_board_size, 1);
+			random_stateGPU(s_state, s_temp, s_seeds, dc_board_size, dc_max_pieces);
 			if (s_rand < 0.50f) {
 				take_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_tempui, s_ophidden, &s_tempf);
 				++turn;
@@ -2066,7 +2071,7 @@ __global__ void compete_kernel(unsigned *seeds, float *wgts, float *opwgts, WON_
 	
 	*** Requires board_size threads ***
 */
-__global__ void old_learn_kernel(unsigned *seeds, float *wgts, float *e, float *saved_wgts, WON_LOSS *wl, float *delta_wgts, unsigned *d_ops, unsigned reset_stats, unsigned *max_turns)
+__global__ void old_learn_kernel(unsigned *seeds, float *wgts, float *e, float *saved_wgts, WON_LOSS *wl, float *delta_wgts, unsigned *d_ops, unsigned reset_stats, unsigned *num_pieces)
 {
 	unsigned idx = threadIdx.x;
 	unsigned iAgent = blockIdx.x;
@@ -2127,7 +2132,7 @@ __global__ void old_learn_kernel(unsigned *seeds, float *wgts, float *e, float *
 	unsigned turn = 0;
 	unsigned total_turns = 0;
 	
-	random_stateGPU(s_state, s_temp, s_seeds, dc_board_size, 0);
+	random_stateGPU(s_state, s_temp, s_seeds, dc_board_size, num_pieces[iAgent]);
 
 	if (idx == 0){
 		s_rand = RandUniform(s_seeds, dc_board_size);
@@ -2150,7 +2155,7 @@ __global__ void old_learn_kernel(unsigned *seeds, float *wgts, float *e, float *
 		else take_random_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_terminal, s_ophidden, &s_reward, s_seeds, dc_board_size);
 		++turn;
 		
-		if (s_terminal || (turn == max_turns[iAgent])) {
+		if (s_terminal || (turn == dc_max_turns)) {
 			turn = 0;
 			if (idx == 0) {
 				++s_stats[0];
@@ -2162,7 +2167,7 @@ __global__ void old_learn_kernel(unsigned *seeds, float *wgts, float *e, float *
 			}
 			__syncthreads();			
 
-			random_stateGPU(s_state, s_temp, s_seeds, dc_board_size, 0);
+			random_stateGPU(s_state, s_temp, s_seeds, dc_board_size, num_pieces[iAgent]);
 
 			if (s_rand < 0.50f) {
 				if (saved_wgts) take_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_tempui, s_ophidden, &s_tempf);
@@ -2348,7 +2353,7 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 		
 			RESUME_TIMER(gpuLearnTimer);
 			PRE_KERNEL2("old_learn_kernel", learnBlockDim, learnGridDim);
-			old_learn_kernel<<<learnGridDim, learnBlockDim, dynamic_shared_mem()>>>(agGPU->seeds, agGPU->wgts, agGPU->e, agGPU->saved_wgts, agGPU->wl, agGPU->delta_wgts, g_p.d_opgrid + iSeg * g_p.num_opponents, (0 == iSeg && 0 == iSession % g_p.standings_freq), agGPU->training_turns);
+			old_learn_kernel<<<learnGridDim, learnBlockDim, dynamic_shared_mem()>>>(agGPU->seeds, agGPU->wgts, agGPU->e, agGPU->saved_wgts, agGPU->wl, agGPU->delta_wgts, g_p.d_opgrid + iSeg * g_p.num_opponents, (0 == iSeg && 0 == iSession % g_p.standings_freq), agGPU->training_pieces);
 			POST_KERNEL(old_learn_kernel);
 			
 			cudaThreadSynchronize();
@@ -2389,7 +2394,7 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 			RESUME_TIMER(gpuCompeteTimer);
 //			device_dumpui("agGPU->wl", (unsigned *)agGPU->wl, g_p.num_agents * g_p.benchmark_ops, 4);
 			PRE_KERNEL2("compete_kernel", competeBlockDim, competeGridDim);
-			compete_kernel<<<competeGridDim, competeBlockDim, dynamic_shared_mem()>>>(agGPU->seeds, agGPU->wgts, d_champ_wgts, agGPU->wl, 0);
+			compete_kernel<<<competeGridDim, competeBlockDim, dynamic_shared_mem()>>>(agGPU->seeds, agGPU->wgts, d_champ_wgts, agGPU->wl);
 			POST_KERNEL(compete_kernel);
 
 //			printf("\n>>>>>>>>>>>>>>> reduce_wl\n");
@@ -2420,7 +2425,7 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 			CUDA_SAFE_CALL(cudaMemcpy(lastStandings, rGPU->standings + iSession * g_p.num_agents, g_p.num_agents * sizeof(WON_LOSS), cudaMemcpyDeviceToHost));
 			CUDA_SAFE_CALL(cudaMemcpy(lastVsChamp, rGPU->vsChamp + iSession * g_p.num_agents, g_p.num_agents * sizeof(WON_LOSS), cudaMemcpyDeviceToHost));
 			printf("\n\n********** Session %d **********\n", iSession);
-//			dump_agent_paramsGPU("agent parameters", agGPU);
+			dump_agent_paramsGPU("agent parameters", agGPU);
 			print_standings(lastStandings, lastVsChamp);
 			timing_feedback_header(g_p.standings_freq);
 		}

@@ -221,18 +221,6 @@ typedef struct{
 	unsigned *training_turns;		// maximum number of moves per game
 } AGENT;
 
-//typedef struct {
-//	unsigned *seeds;	// pointer to four seeds
-//	float *fdata;		// pointer to all float values
-//	unsigned num_wgts;	// number of weights (and of W)
-//	unsigned iWgts;		// index in fData to beginning of wgts
-//	unsigned iE;		// index in fData to beginning of eligibility trace
-//	unsigned iAlpha;	// index in fData to alpha
-//	unsigned iEpsilon;	// index in fData to epsilon
-//	unsigned iLambda;	// index in fData to lambda
-//} COMPACT_AGENT;
-
-
 // RESULTS holds pointers to the results of the learning, which are always on the CPU
 typedef struct {
 	PARAMS p;				// global parameters used for this run
@@ -263,7 +251,6 @@ void freeResultsGPU(RESULTS *r);
 
 unsigned *start_state();
 void dump_state(unsigned *state);
-//void dump_board(unsigned *board);
 
 RESULTS *runCPU(AGENT *ag, float *champ_wgts);
 RESULTS *runGPU(AGENT *ag, float *champ_wgts);

@@ -44,6 +44,7 @@
 		106FF80D119EE7F5000CD6C8 /* main.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = main.c; sourceTree = "<group>"; };
 		1073075412CFE6090012BBE7 /* standingsGPU.csv */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = standingsGPU.csv; sourceTree = "<group>"; };
 		1073079312CFF13E0012BBE7 /* results.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = results.h; sourceTree = "<group>"; };
+		1095FACD12DB61E600790EAE /* res_variations_on_best.numbers */ = {isa = PBXFileReference; lastKnownFileType = file; path = res_variations_on_best.numbers; sourceTree = "<group>"; };
 		10A540AE12CBEADB00EC0531 /* knight57n4v11.agent */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = knight57n4v11.agent; sourceTree = "<group>"; };
 		10D4729412BCD1070018A3A5 /* misc_utils.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = misc_utils.c; sourceTree = "<group>"; };
 		10D4729512BCD1070018A3A5 /* misc_utils.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = misc_utils.h; sourceTree = "<group>"; };
@@ -117,6 +118,7 @@
 		103C8E3212B8D33800FE2066 /* notes and results */ = {
 			isa = PBXGroup;
 			children = (
+				1095FACD12DB61E600790EAE /* res_variations_on_best.numbers */,
 				103C8E3A12B8D51900FE2066 /* notes.txt */,
 				10D473F212BD57EF0018A3A5 /* temp.agent */,
 				10D473C012BD1FDD0018A3A5 /* standings.csv */,
