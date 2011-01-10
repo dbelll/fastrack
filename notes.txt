@@ -7,6 +7,11 @@ Questions:
 
 Must do:
 
+	Add exploration
+		- add noise to val_for_state
+		- add epsilon
+		- modify initial weights to encourage exploration
+		
 	Profile kernels and optimize
 		choose_move is the bottleneck, has incoherent global memory reads
 		<done> put *dc_moves into a texture?
