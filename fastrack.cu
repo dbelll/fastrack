@@ -417,9 +417,9 @@ AGENT *init_agentsCPU(PARAMS p)
 	for (int i = 0; i < p.num_agents * p.state_size; i++) {
 		ag->states[i] = 0;
 	}
-	for (int iAg = 0; iAg < p.num_agents; iAg++) {
-		set_start_state(ag->states + iAg * p.state_size, p.num_pieces, ag->seeds + iAg * p.board_size * 4, p.board_size);
-	}
+//	for (int iAg = 0; iAg < p.num_agents; iAg++) {
+//		set_start_state(ag->states + iAg * p.state_size, p.num_pieces, ag->seeds + iAg * p.board_size * 4, p.board_size);
+//	}
 	
 	ag->next_to_play = (unsigned *)malloc(p.num_agents * sizeof(unsigned));
 	for (int iAg = 0; iAg < p.num_agents; iAg++) {
