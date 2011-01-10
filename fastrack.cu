@@ -210,11 +210,11 @@ void random_board2(unsigned *board, unsigned n, unsigned *seeds, unsigned stride
 	
 	unsigned count = count_board_piecesCPU(board);
 	unsigned r;
-	while (count > g_p.num_pieces) {
+	while (count > n) {
 		r = rand_num(g_p.board_size, seeds, stride);
 		if (board[r] == 1) { board[r] = 0; --count; }
 	}
-	while (count < g_p.num_pieces){
+	while (count < n){
 		r = rand_num(g_p.board_size, seeds, stride);
 		if (board[r] == 0) {board[r] = 1; ++count; }
 	}
@@ -241,11 +241,11 @@ void random_board_masked2(unsigned *board, unsigned *mask, unsigned n, unsigned 
 	}
 	unsigned count = count_board_piecesCPU(board);
 	unsigned r;
-	while (count > g_p.num_pieces) {
+	while (count > n) {
 		r = rand_num(g_p.board_size, seeds, stride);
 		if (board[r] == 1) { board[r] = 0; --count; }
 	}
-	while (count < g_p.num_pieces) {
+	while (count < n) {
 		r = rand_num(g_p.board_size, seeds, stride);
 		if (board[r] == 0 && mask[r] == 0) { board[r] = 1; ++count; }
 	}
@@ -1176,7 +1176,7 @@ RESULTS *runCPU(AGENT *agCPU, float *champ_wgts)
 			for (int p = 1; p <= save_num_pieces; p++) {
 				g_p.num_pieces = p;
 				printf(" %d ... ", p);
-				auto_learn(agCPU, iAg, NULL, g_p.num_pieces, g_p.warmup_length, g_p.max_turns);
+				auto_learn(agCPU, iAg, NULL, agCPU->training_pieces[iAg], g_p.warmup_length, g_p.max_turns);
 			}
 			printf(" done\n");
 			g_p.num_pieces = save_num_pieces;
@@ -1201,6 +1201,7 @@ RESULTS *runCPU(AGENT *agCPU, float *champ_wgts)
 //		printf("g_p.num_hidden is %d\n", g_p.num_hidden);
 		// run a round-robin learning session
 		for (int iAg = 0; iAg < g_p.num_agents; iAg++) {
+			printf("*** Agent %d ***\n", iAg);
 			RESUME_TIMER(learnTimer);
 			unsigned iStand = iSession * g_p.num_agents + iAg;
 			r->standings[iStand].agent= iAg;
@@ -1223,7 +1224,7 @@ RESULTS *runCPU(AGENT *agCPU, float *champ_wgts)
 
 //				printf("\n\n>>>>> new matchup >>>>> (%d vs %d)\n", iAg, xOp);
 
-				WON_LOSS wl = auto_learn(agCPU, iAg, agCPU->saved_wgts + xOp * g_p.wgts_stride, g_p.num_pieces, g_p.episode_length, g_p.max_turns);
+				WON_LOSS wl = auto_learn(agCPU, iAg, agCPU->saved_wgts + xOp * g_p.wgts_stride, agCPU->training_pieces[iAg], g_p.episode_length, g_p.max_turns);
 //				printf("g_p.num_hidden is %d\n", g_p.num_hidden);
 				r->standings[iStand].games += wl.games;
 				r->standings[iStand].wins += wl.wins;

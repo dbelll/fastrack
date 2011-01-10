@@ -190,7 +190,7 @@ void print_standings(AGENT *ag, WON_LOSS *standings, WON_LOSS *vsChamp)
 			totChamp.losses += vsChamp[iAgent].losses;
 		}else printf("\n");
 	}
-	printf(" avg     %7u%7u%7u  %5.3f ", totStand.games, totStand.wins, totStand.losses, winpct(totStand));
+	printf("        avg     %7u%7u%7u  %5.3f ", totStand.games, totStand.wins, totStand.losses, winpct(totStand));
 	if (printBenchmark) printf("(%6.1f-%6.1f)   %+6.1f\n", (float)totChamp.wins / (float)g_p.num_agents, (float)totChamp.losses / (float)g_p.num_agents, (float)((int)totChamp.wins-(int)totChamp.losses) / (float)g_p.num_agents);
 	else printf("\n");
 }
