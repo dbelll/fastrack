@@ -389,7 +389,8 @@ void init_training_pieces(unsigned *training_pieces, PARAMS *p)
 void init_alpha(float *alpha, PARAMS *p)
 {
 	for (int iAg = 0; iAg < p->num_agents; iAg++) {
-		alpha[iAg] = p->min_alpha + ranf()*(p->max_alpha - p->min_alpha);
+		alpha[iAg] = p->min_alpha + RandUniform(g_seeds, 1)*(p->max_alpha - p->min_alpha);
+		printf("min_alpha is %4.2f, max_alpha is %4.2f and alpha for agent %d is %4.2f\n", p->min_alpha, p->max_alpha, iAg, alpha[iAg]);
 	}
 }
 
@@ -443,6 +444,7 @@ AGENT *init_agentsCPU(PARAMS p)
 
 	ag->training_pieces = (unsigned *)malloc(p.num_agents * sizeof(unsigned));
 	init_training_pieces(ag->training_pieces, &p);
+	init_alpha(ag->alpha, &p);
 	return ag;
 }
 
