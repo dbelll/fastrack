@@ -210,11 +210,11 @@ void random_board2(unsigned *board, unsigned n, unsigned *seeds, unsigned stride
 	
 	unsigned count = count_board_piecesCPU(board);
 	unsigned r;
-	while (count > g_p.num_pieces) {
+	while (count > n) {
 		r = rand_num(g_p.board_size, seeds, stride);
 		if (board[r] == 1) { board[r] = 0; --count; }
 	}
-	while (count < g_p.num_pieces){
+	while (count < n){
 		r = rand_num(g_p.board_size, seeds, stride);
 		if (board[r] == 0) {board[r] = 1; ++count; }
 	}
@@ -241,11 +241,11 @@ void random_board_masked2(unsigned *board, unsigned *mask, unsigned n, unsigned 
 	}
 	unsigned count = count_board_piecesCPU(board);
 	unsigned r;
-	while (count > g_p.num_pieces) {
+	while (count > n) {
 		r = rand_num(g_p.board_size, seeds, stride);
 		if (board[r] == 1) { board[r] = 0; --count; }
 	}
-	while (count < g_p.num_pieces) {
+	while (count < n) {
 		r = rand_num(g_p.board_size, seeds, stride);
 		if (board[r] == 0 && mask[r] == 0) { board[r] = 1; ++count; }
 	}
@@ -374,6 +374,7 @@ void freeAgentCPU(AGENT *ag)
 		if (ag->states) free(ag->states);
 		if (ag->next_to_play) free(ag->next_to_play);
 		if (ag->wgts) free(ag->wgts);
+		if (ag->training_pieces) free(ag->training_pieces);
 		free(ag);
 	}
 }
@@ -425,6 +426,10 @@ AGENT *init_agentsCPU(PARAMS p)
 		ag->next_to_play[iAg] = ranf() < 0.5f ? 0 : 1;
 	}
 
+	ag->training_pieces = (unsigned *)malloc(p.num_agents * sizeof(unsigned));
+	for (int iAg = 0; iAg < p.num_agents; iAg++) {
+		ag->training_pieces[iAg] = p.min_pieces + iAg % (p.max_pieces - p.min_pieces + 1); 
+	}
 	return ag;
 }
 
@@ -441,6 +446,8 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 	agGPU->states = device_copyui(agCPU->states, g_p.num_agents * g_p.state_size);
 	agGPU->next_to_play = device_copyui(agCPU->next_to_play, g_p.num_agents);
 	agGPU->wgts = device_copyf(agCPU->wgts, g_p.num_agent_floats * g_p.num_agents);
+	agGPU->training_pieces = device_copyui(agCPU->training_pieces, g_p.num_agents);
+//	agGPU->training_turns = device_copyui(agCPU->training_turns, g_p.num_agents);
 	set_agent_float_pointers(agGPU);
 	
 //	printf("agGPU->seeds %p\n", agGPU->seeds);
@@ -458,25 +465,26 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 	printf("num_opponents is %d, benchmark_ops is %d so max_ops is %d\n", g_p.num_opponents, g_p.benchmark_ops, max_ops);
 	CUDA_SAFE_CALL(cudaMalloc(&agGPU->wl, g_p.num_agents * max_ops * sizeof(WON_LOSS)));
 	
-	// Agents have their own value for num_pieces and max_turns, stored in arrays on the AGENT
-	// structure called training_pieces and training_turns.
-	CUDA_SAFE_CALL(cudaMalloc(&agGPU->training_pieces, g_p.num_agents * sizeof(unsigned)));
+//	// Agents have their own value for num_pieces and max_turns, stored in arrays on the AGENT
+//	// structure called training_pieces and training_turns.
+//	CUDA_SAFE_CALL(cudaMalloc(&agGPU->training_pieces, g_p.num_agents * sizeof(unsigned)));
 	CUDA_SAFE_CALL(cudaMalloc(&agGPU->training_turns, g_p.num_agents * sizeof(unsigned)));
-	unsigned *h_training_pieces = (unsigned *)malloc(g_p.num_agents * sizeof(unsigned));
+//	unsigned *h_training_pieces = (unsigned *)malloc(g_p.num_agents * sizeof(unsigned));
 	unsigned *h_training_turns = (unsigned *)malloc(g_p.num_agents * sizeof(unsigned));
 	
-	// set the values for training_pieces and training_turns here
+//	// set the values for training_pieces and training_turns here
 	for (int iAg = 0; iAg < g_p.num_agents; iAg++) {
 		// if max_pieces > min_pieces, assign agents uniformly to values from min_pieces to max_pieces
-		if (g_p.max_pieces > g_p.min_pieces)
-			h_training_pieces[iAg] = g_p.min_pieces + iAg % (g_p.max_pieces - g_p.min_pieces + 1);
-		else h_training_pieces[iAg] = g_p.num_pieces;
+//		if (g_p.max_pieces > g_p.min_pieces)
+//			h_training_pieces[iAg] = g_p.min_pieces + iAg % (g_p.max_pieces - g_p.min_pieces + 1);
+//		else h_training_pieces[iAg] = g_p.num_pieces;
 		h_training_turns[iAg] = g_p.max_turns;
 //		printf("[agent %d] training pieces is %d, training turns is %d\n", iAg, h_training_pieces[iAg], h_training_turns[iAg]);
 	}
-	agGPU->training_pieces = device_copyui(h_training_pieces, g_p.num_agents);
+//	agGPU->training_pieces = device_copyui(h_training_pieces, g_p.num_agents);
 	agGPU->training_turns = device_copyui(h_training_turns, g_p.num_agents);
-	free(h_training_pieces); free(h_training_turns);
+//	free(h_training_pieces); 
+	free(h_training_turns);
 	
 //	device_dumpui("agGPU->training_pieces", agGPU->training_pieces, g_p.num_agents, 1);
 //	device_dumpui("agGPU->training_turns", agGPU->training_turns, g_p.num_agents, 1);
@@ -1168,7 +1176,7 @@ RESULTS *runCPU(AGENT *agCPU, float *champ_wgts)
 			for (int p = 1; p <= save_num_pieces; p++) {
 				g_p.num_pieces = p;
 				printf(" %d ... ", p);
-				auto_learn(agCPU, iAg, NULL, g_p.num_pieces, g_p.warmup_length, g_p.max_turns);
+				auto_learn(agCPU, iAg, NULL, agCPU->training_pieces[iAg], g_p.warmup_length, g_p.max_turns);
 			}
 			printf(" done\n");
 			g_p.num_pieces = save_num_pieces;
@@ -1193,6 +1201,7 @@ RESULTS *runCPU(AGENT *agCPU, float *champ_wgts)
 //		printf("g_p.num_hidden is %d\n", g_p.num_hidden);
 		// run a round-robin learning session
 		for (int iAg = 0; iAg < g_p.num_agents; iAg++) {
+			printf("*** Agent %d ***\n", iAg);
 			RESUME_TIMER(learnTimer);
 			unsigned iStand = iSession * g_p.num_agents + iAg;
 			r->standings[iStand].agent= iAg;
@@ -1215,7 +1224,7 @@ RESULTS *runCPU(AGENT *agCPU, float *champ_wgts)
 
 //				printf("\n\n>>>>> new matchup >>>>> (%d vs %d)\n", iAg, xOp);
 
-				WON_LOSS wl = auto_learn(agCPU, iAg, agCPU->saved_wgts + xOp * g_p.wgts_stride, g_p.num_pieces, g_p.episode_length, g_p.max_turns);
+				WON_LOSS wl = auto_learn(agCPU, iAg, agCPU->saved_wgts + xOp * g_p.wgts_stride, agCPU->training_pieces[iAg], g_p.episode_length, g_p.max_turns);
 //				printf("g_p.num_hidden is %d\n", g_p.num_hidden);
 				r->standings[iStand].games += wl.games;
 				r->standings[iStand].wins += wl.wins;
@@ -1238,7 +1247,7 @@ RESULTS *runCPU(AGENT *agCPU, float *champ_wgts)
 		RESUME_TIMER(learnTimer);
 		
 		// sort and print the standings
-		print_standings(r->standings + iSession * g_p.num_agents, r->vsChamp + iSession * g_p.num_agents);
+		print_standings(agCPU, r->standings + iSession * g_p.num_agents, r->vsChamp + iSession * g_p.num_agents);
 		
 		// remember the winner after this session
 		lastWinner = r->standings[iSession * g_p.num_agents + 0].agent;
@@ -2441,7 +2450,7 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 			CUDA_SAFE_CALL(cudaMemcpy(lastVsChamp, rGPU->vsChamp + iSession * g_p.num_agents, g_p.num_agents * sizeof(WON_LOSS), cudaMemcpyDeviceToHost));
 			printf("\n\n********** Session %d **********\n", iSession);
 			dump_agent_paramsGPU("agent parameters", agGPU);
-			print_standings(lastStandings, lastVsChamp);
+			print_standings(agGPU, lastStandings, lastVsChamp);
 			timing_feedback_header(g_p.standings_freq);
 		}
 		

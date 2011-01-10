@@ -245,6 +245,7 @@ AGENT *copy_agents_to_host(AGENT *agGPU)
 	agCPU->states = host_copyui(agGPU->states, g_p.num_agents * g_p.state_size);
 	agCPU->next_to_play = host_copyui(agGPU->next_to_play, g_p.num_agents);
 	agCPU->wgts = host_copyf(agGPU->wgts, g_p.num_agent_floats * g_p.num_agents);
+	agCPU->training_pieces = host_copyui(agGPU->training_pieces, g_p.num_agents);
 	set_agent_float_pointers(agCPU);
 	
 	return agCPU;
@@ -306,7 +307,7 @@ void save_agentsGPU(AGENT *d_agGPU, RESULTS *rGPU)
 	CUDA_SAFE_CALL(cudaMemcpy(lastStandings, rGPU->standings + (g_p.num_sessions-1) * g_p.num_agents, g_p.num_agents * sizeof(WON_LOSS), cudaMemcpyDeviceToHost));
 	CUDA_SAFE_CALL(cudaMemcpy(lastVsChamp, rGPU->vsChamp + (g_p.num_sessions-1) * g_p.num_agents, g_p.num_agents * sizeof(WON_LOSS), cudaMemcpyDeviceToHost));
 	// print standings to force a sort
-	print_standings(lastStandings, lastVsChamp);
+	print_standings(h_agGPU, lastStandings, lastVsChamp);
 	
 	
 #ifdef AGFILE_GPU0
@@ -452,6 +453,8 @@ void dump_agent(AGENT *agCPU, unsigned iag, unsigned dumpW, unsigned dumpSaved)
 	printf("[   alpha], %9.4f\n", agCPU->alpha[iag]);
 	printf("[ epsilon], %9.4f\n", agCPU->epsilon[iag]);
 	printf("[  lambda], %9.4f\n", agCPU->lambda[iag]);
+	printf("[training_pieces], %4d\n", agCPU->training_pieces[iag]);
+	printf("[training_turns], %4d\n", agCPU->training_turns[iag]);
 #endif	
 	dump_state(agCPU->states + iag*g_p.state_size, 0, agCPU->next_to_play[iag]);
 }
