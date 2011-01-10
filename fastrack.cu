@@ -447,7 +447,7 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 	agGPU->next_to_play = device_copyui(agCPU->next_to_play, g_p.num_agents);
 	agGPU->wgts = device_copyf(agCPU->wgts, g_p.num_agent_floats * g_p.num_agents);
 	agGPU->training_pieces = device_copyui(agCPU->training_pieces, g_p.num_agents);
-	device_dumpui("agent training_pieces:", agGPU->training_pieces, g_p.num_agents, 1);
+//	device_dumpui("agent training_pieces:", agGPU->training_pieces, g_p.num_agents, 1);
 //	agGPU->training_turns = device_copyui(agCPU->training_turns, g_p.num_agents);
 	set_agent_float_pointers(agGPU);
 	
@@ -2265,7 +2265,7 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 	dump_agentsGPU("initial agents on GPU", agGPU, 1, 0);
 #endif
 
-	device_dumpui("agent training_pieces (again):", agGPU->training_pieces, g_p.num_agents, 1);
+//	device_dumpui("agent training_pieces (again):", agGPU->training_pieces, g_p.num_agents, 1);
 
 	// copy champ_wgts to device
 	float *d_champ_wgts = device_copyf(champ_wgts, g_p.wgts_stride);
