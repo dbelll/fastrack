@@ -1248,7 +1248,7 @@ RESULTS *runCPU(AGENT *agCPU, float *champ_wgts)
 		RESUME_TIMER(learnTimer);
 		
 		// sort and print the standings
-		print_standings(agCPU, r->standings + iSession * g_p.num_agents, r->vsChamp + iSession * g_p.num_agents);
+		print_standingsCPU(agCPU, r->standings + iSession * g_p.num_agents, r->vsChamp + iSession * g_p.num_agents);
 		
 		// remember the winner after this session
 		lastWinner = r->standings[iSession * g_p.num_agents + 0].agent;
@@ -2453,7 +2453,7 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 			CUDA_SAFE_CALL(cudaMemcpy(lastVsChamp, rGPU->vsChamp + iSession * g_p.num_agents, g_p.num_agents * sizeof(WON_LOSS), cudaMemcpyDeviceToHost));
 			printf("\n\n********** Session %d **********\n", iSession);
 			dump_agent_paramsGPU("agent parameters", agGPU);
-			print_standings(agGPU, lastStandings, lastVsChamp);
+			print_standingsGPU(agGPU, lastStandings, lastVsChamp);
 			timing_feedback_header(g_p.standings_freq);
 		}
 		

@@ -21,3 +21,6 @@ void dump_agent(AGENT *agCPU, unsigned iag, unsigned dumpW, unsigned dumpSaved);
 WON_LOSS *copy_standings_to_CPU(RESULTS *rGPU);
 void print_standings(AGENT *ag, WON_LOSS *standings, WON_LOSS *vsChamp);
 void dump_opponent_array();
+
+void print_standingsGPU(AGENT *agGPU, WON_LOSS *standings, WON_LOSS *vsChamp);
+void print_standingsCPU(AGENT *agCPU, WON_LOSS *standings, WON_LOSS *vsChamp);

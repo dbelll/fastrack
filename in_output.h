@@ -307,7 +307,7 @@ void save_agentsGPU(AGENT *d_agGPU, RESULTS *rGPU)
 	CUDA_SAFE_CALL(cudaMemcpy(lastStandings, rGPU->standings + (g_p.num_sessions-1) * g_p.num_agents, g_p.num_agents * sizeof(WON_LOSS), cudaMemcpyDeviceToHost));
 	CUDA_SAFE_CALL(cudaMemcpy(lastVsChamp, rGPU->vsChamp + (g_p.num_sessions-1) * g_p.num_agents, g_p.num_agents * sizeof(WON_LOSS), cudaMemcpyDeviceToHost));
 	// print standings to force a sort
-	print_standings(h_agGPU, lastStandings, lastVsChamp);
+	print_standingsCPU(h_agGPU, lastStandings, lastVsChamp);
 	
 	
 #ifdef AGFILE_GPU0
