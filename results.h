@@ -162,10 +162,9 @@ void dumpResultsGPU(RESULTS *rGPU)
 
 // Print sorted standings using the WON_LOSS information in standings (from learning vs. peers),
 // and vsChamp (from competing against benchmark agent).
-void print_standings(AGENT *ag, WON_LOSS *standings, WON_LOSS *vsChamp)
+void print_standings_aux(unsigned *training_pieces, WON_LOSS *standings, WON_LOSS *vsChamp)
 {
 	unsigned printBenchmark = 0 < vsChamp[0].games;
-	
 	qsort(standings, g_p.num_agents, sizeof(WON_LOSS), wl_compare);
 	printf(    "                     G     W     L    PCT");
 	if (printBenchmark) printf("    %4d games vs Champ\n", g_p.benchmark_games);
@@ -178,13 +177,13 @@ void print_standings(AGENT *ag, WON_LOSS *standings, WON_LOSS *vsChamp)
 		//			printf("agent%4d  %4d %4d %4d  %5.3f", standings[i].agent, standings[i].games, standings[i].wins, standings[i].losses, 0.5f * (1.0f + (float)(standings[i].wins - standings[i].losses) / (float)standings[i].games));
 		unsigned iAgent = standings[i].agent;
 
-		printf("standings place %d is agent %d\n", i,iAgent);
-		printf("   training_pieces %d\n", ag->training_pieces[iAgent]);
-		printf("             games %d\n", standings[i].games);
-		printf("               won %d\n", standings[i].wins);
-		printf("              loss %d\n", standings[i].losses);
+//		printf("standings place %d is agent %d\n", i,iAgent);
+//		printf("   training_pieces %d\n", ag->training_pieces[iAgent]);
+//		printf("             games %d\n", standings[i].games);
+//		printf("               won %d\n", standings[i].wins);
+//		printf("              loss %d\n", standings[i].losses);
 
-		printf("agent%4d[tp=%2d] %6u %6u %6u  %5.3f", iAgent, ag->training_pieces[iAgent], standings[i].games, standings[i].wins, standings[i].losses, winpct(standings[i]));
+		printf("agent%4d[tp=%2d] %6u %6u %6u  %5.3f", iAgent, training_pieces[iAgent], standings[i].games, standings[i].wins, standings[i].losses, winpct(standings[i]));
 		
 		totStand.games += standings[i].games;
 		totStand.wins += standings[i].wins;
@@ -202,6 +201,17 @@ void print_standings(AGENT *ag, WON_LOSS *standings, WON_LOSS *vsChamp)
 	else printf("\n");
 }
 
+void print_standingsGPU(AGENT *agGPU, WON_LOSS *standings, WON_LOSS *vsChamp)
+{
+	unsigned *training_pieces = host_copyui(agGPU->training_pieces, g_p.num_agents);
+	print_standings_aux(training_pieces, standings, vsChamp);
+	free(training_pieces);
+}
+
+void print_standingsCPU(AGENT *agCPU, WON_LOSS *standings, WON_LOSS *vsChamp)
+{
+	print_standings_aux(agCPU->training_pieces, standings, vsChamp);
+}
 //void print_standingsGPU(WON_LOSS *standings, WON_LOSS *vsChamp)
 //{
 //	// copy the device standings to the host, then call the normal print standings function

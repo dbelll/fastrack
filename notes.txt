@@ -6,6 +6,7 @@ Questions:
 	What is the best number of parallel opponents?
 
 Must do:
+	Fix problem with num_pieces of 1 - must check for terminal condition after the first move.
 
 	Add exploration
 		- add noise to val_for_state
