@@ -115,6 +115,11 @@ void RESET_TIMER(unsigned timer);
 void DELETE_TIMER(unsigned int timer);
 void PRINT_TIME(float time, char *message);
 
+#define INIT_TIMER(timer)	\
+	unsigned timer;			\
+	CREATE_TIMER(&timer);	\
+	START_TIMER(timer);		\
+	PAUSE_TIMER(timer);
 
 /*
  *		Use Cuda Events to get precise GPU timings.
