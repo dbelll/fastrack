@@ -2527,7 +2527,6 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 #ifdef DUMP_FINAL_AGENTS_GPU
 	dump_agentsGPU("agents after learning on GPU", agGPU, 1, DUMP_SAVED_WGTS);
 #endif
-
 	
 	cudaFree(d_champ_wgts);
 	
