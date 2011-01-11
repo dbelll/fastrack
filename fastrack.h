@@ -93,7 +93,7 @@ enum OPPONENT_METHODS {
 
 #define MAX_MOVES 8			// the maximum number of possible moves in the piece move definitions
 
-#define MAX_OPPONENTS 64
+#define MAX_OPPONENTS 256
 
 // macro for executing statement if variable show is true
 // use before printf or other output statements to only print when show is TRUE:
