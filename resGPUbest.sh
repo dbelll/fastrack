@@ -1,13 +1,16 @@
-\#!/bin/bash
+#!/bin/bash
 # Baseline comparison of GPU and CPU results
 #
 #   no arguments
 #
 _location="./bin/linux/release"
-_setup="--SEED=1001 --BOARD_SIZE=5007 --NUM_PIECES=2 --MAX_TURNS=5"
-_agent="--NUM_HIDDEN=4 --NUM_AGENTS=64 --NUM_OPPONENTS=32"
-_learn="--NUM_SESSIONS=20000 --EPISODE_LENGTH=5 --WARMUP_LENGTH=0 --BENCHMARK_GAMES=400 --BENCHMARK_FREQ=200"
-_params="--ALPHA=0.05 --EPSILON=0.00 --GAMMA=0.95 --LAMBDA=0.25"
+_setup="--SEED=1001 --BOARD_SIZE=5007 --NUM_PIECES=5 --MAX_TURNS=10"
+_ag1="--NUM_HIDDEN=4 --NUM_AGENTS=512 --NUM_OPPONENTS=256"
+_ag2="--MIN_PIECES=2 --MAX_PIECES=5"
+_learn="--NUM_SESSIONS=500 --SEGS_PER_SESSION=1 --EPISODE_LENGTH=5"
+_ops="--OP_METHOD=1"
+_compete="--BENCHMARK_GAMES=400 --BENCHMARK_FREQ=25 --ICHAMP=1"
+_params="--MIN_ALPHA=0.20 --MAX_ALPHA=0.20 --EPSILON=0.00 --GAMMA=0.95 --LAMBDA=0.75"
 _run="--GPU"
 
-$_location/fastrack $_setup $_agent $_learn $_params $_run
+$_location/fastrack $_setup $_ag1 $_ag2 $_learn $_ops $_compete $_params $_run
