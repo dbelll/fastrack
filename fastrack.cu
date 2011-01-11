@@ -475,10 +475,12 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 	
 	// Allocate room for storing temporary won-loss information on device.
 	// Temporary won-loss area stores the results for opponents run in parallel (num_opponents),
-	// and also for the benchmark compete results run in parallel (benchmark_ops), so have to
+	// and also for the benchmark compete results run in parallel (benchmark_ops), and also
+	// for the round-robin competition (num_agents), so have to
 	// allocate temporary area large enough to hold the greater of num_opponents and benchmark_ops.
 	unsigned max_ops = (g_p.num_opponents > g_p.benchmark_ops) ? g_p.num_opponents : g_p.benchmark_ops;
-	printf("num_opponents is %d, benchmark_ops is %d so max_ops is %d\n", g_p.num_opponents, g_p.benchmark_ops, max_ops);
+	if (g_p.rr_games > 0 && max_ops < g_p.num_agents) max_ops = g_p.num_agents;
+	printf("num_opponents is %d, benchmark_ops is %d, rr_games is %d and num_agents is %d, so max_ops is %d\n", g_p.num_opponents, g_p.benchmark_ops, g_p.rr_games, g_p.num_agents, max_ops);
 	CUDA_SAFE_CALL(cudaMalloc(&agGPU->wl, g_p.num_agents * max_ops * sizeof(WON_LOSS)));
 	
 //	// Agents have their own value for num_pieces and max_turns, stored in arrays on the AGENT
@@ -538,6 +540,10 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 	// calculate and store on device the number of benchmark games per parallel benchmarn opponent
 	unsigned benchmark_games_per_op = g_p.benchmark_games / g_p.benchmark_ops;
 	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_benchmark_games_per_op", &benchmark_games_per_op, sizeof(unsigned)));
+	
+	// calculate and store on device the number of round-robin games per match
+	unsigned rr_games_per_op = g_p.rr_games / g_p.num_agents;
+	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_rr_games_per_op", &rr_games_per_op, sizeof(unsigned)));
 	
 	// reps_for_wgts is the number of repitions (iterations through a loop) that must be done
 	// in a kernel with board_size threads per block to copy weights between global and local memory.
@@ -2004,15 +2010,16 @@ __global__ void copy_wgts_kernel(float *wgts, float *saved_wgts)
 
 /*
 	Compete (without learning) against a benchmark opponent, or against other agents.
-	If round_robin flag is on, the opwgts points to agent weights and the iOpponet value indexes
-	into it to obtain the opponent weights for the competition.
-	If round_robin flag is off, then opwgts is pointing to the single benchmark opponent's weights.
+	If multiOp is TRUE, then must use iOpponent (= blockIdx.y) to index into the opponent weights at opwgts
+	If multiOp if FALSE, then there is only one opponent weight at opwgts, used for all competitions
 */
-__global__ void compete_kernel(unsigned *seeds, float *wgts, float *opwgts, WON_LOSS *wl)
+__global__ void compete_kernel(unsigned *seeds, float *wgts, float *opwgts, WON_LOSS *wl, unsigned multiOp)
 {
 	unsigned idx = threadIdx.x;
 	unsigned iAgent = blockIdx.x;
-	unsigned iOpponent = blockIdx.y;	// all opponents are the same single benchmark opponent, but may vary in the future
+
+	// iOpponent will be 0 if only one opponent, or the index if multiple opponents
+	unsigned iOpponent = blockIdx.y;	
 
 	__shared__ float s_rand;
 	__shared__ float s_reward;
@@ -2047,7 +2054,8 @@ __global__ void compete_kernel(unsigned *seeds, float *wgts, float *opwgts, WON_
 	s_seeds[idx + 3*dc_board_size] = seeds[iAgent * 4 * dc_board_size + idx + 3*dc_board_size]+ (blockIdx.y << 4);
 	
 	copy_wgts_to_s(wgts + iAgent * dc_wgts_stride, s_wgts);
-	copy_wgts_to_s(opwgts, s_opwgts);
+//	copy_wgts_to_s(opwgts, s_opwgts);
+	copy_wgts_to_s((multiOp ? opwgts + iOpponent * dc_wgts_stride : opwgts), s_opwgts);
 
 	unsigned turn = 0;
 
@@ -2067,7 +2075,7 @@ __global__ void compete_kernel(unsigned *seeds, float *wgts, float *opwgts, WON_
 	__syncthreads();
 	choose_moveGPU(s_state, s_temp, s_wgts, s_hidden, s_out, &s_tempui, &s_tempf);
 	
-	while (s_stats[0] < dc_benchmark_games_per_op) {
+	while (s_stats[0] < (multiOp ? dc_rr_games_per_op : dc_benchmark_games_per_op)) {
 		take_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_terminal, s_ophidden, &s_reward);
 		++turn;
 		
@@ -2097,7 +2105,6 @@ __global__ void compete_kernel(unsigned *seeds, float *wgts, float *opwgts, WON_
 			*(1 + idx + (unsigned *)(wl + iAgent * dc_benchmark_ops + iOpponent)) = s_stats[idx];
 		}
 	}
-
 }
 
 /*
@@ -2272,6 +2279,24 @@ unsigned dynamic_shared_mem()
 	return sizeof(unsigned) * count;
 }
 
+
+void do_round_robin(AGENT *agGPU, unsigned timer)
+{
+	dim3 blockDim(g_p.board_size);
+	dim3 gridDim(g_p.num_agents, g_p.num_agents);
+
+	printf("running round robin!\n");
+	
+	RESUME_TIMER(timer);	
+	PRE_KERNEL("compete kernel for round robin");
+	compete_kernel<<<gridDim, blockDim, dynamic_shared_mem()>>>(agGPU->seeds, agGPU->wgts, agGPU->wgts, agGPU->wl, 1);
+	POST_KERNEL(compete_kernel);
+	cudaThreadSynchronize();
+	PAUSE_TIMER(timer);
+}
+
+
+
 RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 {
 	printf("\n\n-----------------------------------------------------------\nrunning on GPU...\n");
@@ -2298,6 +2323,7 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 	unsigned gpuShareDeltaTimer;
 	unsigned gpuLearnTimer;
 	unsigned gpuReduceWonLossTimer;
+	unsigned gpuRoundRobinTimer;
 	unsigned gpuCompeteTimer;
 	unsigned gpuStandingsTimer;
 //	CREATE_TIMER(&gpuWarmupTimer);
@@ -2305,6 +2331,7 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 	CREATE_TIMER(&gpuShareDeltaTimer);
 	CREATE_TIMER(&gpuLearnTimer);
 	CREATE_TIMER(&gpuReduceWonLossTimer);
+	CREATE_TIMER(&gpuRoundRobinTimer);
 	CREATE_TIMER(&gpuCompeteTimer);
 	CREATE_TIMER(&gpuStandingsTimer);
 	
@@ -2354,6 +2381,8 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 	PAUSE_TIMER(gpuLearnTimer);
 	START_TIMER(gpuReduceWonLossTimer);
 	PAUSE_TIMER(gpuReduceWonLossTimer);
+	START_TIMER(gpuRoundRobinTimer);
+	PAUSE_TIMER(gpuRoundRobinTimer);
 	START_TIMER(gpuCompeteTimer);
 	PAUSE_TIMER(gpuCompeteTimer);
 	START_TIMER(gpuStandingsTimer);
@@ -2376,7 +2405,8 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 		dim3 competeBlockDim(g_p.board_size);
 		dim3 competeGridDim(g_p.num_agents, g_p.benchmark_ops);
 
-		// learn against other agents simultaneously for segs_per_session iterations
+		// learn against other agents simultaneously for segs_per_session iterations, then
+		// share the delta-weights
 		for (int iSeg = 0; iSeg < g_p.segs_per_session; iSeg++) {
 
 			// copy current agent weights to the saved_wgts area
@@ -2415,10 +2445,14 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 			cudaThreadSynchronize();
 			PAUSE_TIMER(gpuShareDeltaTimer);
 		}
-
-		// reduce the won-loss results and store in rGPU
+		
 		if (0 == (1 + iSession) % g_p.standings_freq) {
-//			printf("\n>>>>>>>>>>>>>>> reduce_wl\n");
+
+			// run a round robin if rr_games > 0
+			// this will replace the won-loss information from previous learning session
+			if (g_p.rr_games > 0) do_round_robin(agGPU, gpuRoundRobinTimer);
+
+			// reduce the won-loss results and store in rGPU->standings
 			RESUME_TIMER(gpuReduceWonLossTimer);
 			dim3 wlBlockDim(g_p.num_opponents);
 			dim3 wlGridDim(g_p.num_agents);
@@ -2436,7 +2470,7 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 			RESUME_TIMER(gpuCompeteTimer);
 //			device_dumpui("agGPU->wl", (unsigned *)agGPU->wl, g_p.num_agents * g_p.benchmark_ops, 4);
 			PRE_KERNEL2("compete_kernel", competeBlockDim, competeGridDim);
-			compete_kernel<<<competeGridDim, competeBlockDim, dynamic_shared_mem()>>>(agGPU->seeds, agGPU->wgts, d_champ_wgts, agGPU->wl);
+			compete_kernel<<<competeGridDim, competeBlockDim, dynamic_shared_mem()>>>(agGPU->seeds, agGPU->wgts, d_champ_wgts, agGPU->wl, 0);
 			POST_KERNEL(compete_kernel);
 
 //			printf("\n>>>>>>>>>>>>>>> reduce_wl\n");
@@ -2486,6 +2520,7 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 	STOP_TIMER(gpuLearnTimer, "GPU learning");
 	STOP_TIMER(gpuShareDeltaTimer, "GPU share delta");
 	STOP_TIMER(gpuReduceWonLossTimer, "GPU reduce won loss");
+	STOP_TIMER(gpuRoundRobinTimer, "GPU round robin");
 	STOP_TIMER(gpuCompeteTimer, "GPU compete vs benchmark");
 	STOP_TIMER(gpuStandingsTimer, "GPU standings");
 	

@@ -155,6 +155,7 @@ typedef struct {
 	unsigned benchmark_games;	// number of games to play vs. champ after each learning session
 	unsigned benchmark_ops;		// number of opponents used for benchmarking
 	unsigned benchmark_freq;	// the frequency of running the benchmark, in number of sessions
+	unsigned rr_games;			// the number of games for the round-robin competition (is any)
 	unsigned standings_freq;	// the fequency of determining the standings and reseting agent w-l stats
 	unsigned refresh_op_wgts_freq;	// the frequency for refreshing the opponents wgts used for learning
 	unsigned determine_best_op_freq;		// the frequency to determine the best opponent
@@ -166,6 +167,7 @@ typedef struct {
 								// = num_agents / op_fraction
 	unsigned num_replace;		// number of agents replaced by copies of best agents whenever the standings are determined
 	enum OPPONENT_METHODS op_method;	// opponent assignment method
+	unsigned half_agents;		
 	unsigned half_opponents;	// largest power of 2 less than num_opponents
 	unsigned half_benchmark_ops;
 	unsigned *opgrid;			// the oppoents each agent will learn against (segs_per_session * num_opponents)

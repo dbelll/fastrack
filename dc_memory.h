@@ -43,6 +43,7 @@ __constant__ unsigned *dc_start_state;
 __constant__ unsigned dc_max_turns;
 __constant__ unsigned dc_episode_length;
 __constant__ unsigned dc_benchmark_games_per_op;
+__constant__ unsigned dc_rr_games_per_op;
 __constant__ unsigned dc_benchmark_ops;
 __constant__ unsigned dc_half_benchmark_ops;
 

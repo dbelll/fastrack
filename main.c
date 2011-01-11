@@ -77,6 +77,7 @@ void dump_params(PARAMS p)
 	printf("   episode_length   %7d\n", p.episode_length);
 	printf("   warmup_length    %7d\n", p.warmup_length);
 	printf("   benchmark_games  %7d\n", p.benchmark_games);
+	printf("   rr_games         %7d\n", p.rr_games);
 	printf("   benchmark_freq   %7d\n", p.benchmark_freq);
 	printf("   standings_freq   %7d\n", p.standings_freq);
 	printf("   refresh_op_wgts_freq%7d\n", p.refresh_op_wgts_freq);
@@ -135,11 +136,13 @@ PARAMS read_params(int argc, const char **argv)
 	p.lambda = GET_PARAMF("LAMBDA", .50f);
 	
 	p.num_agents = GET_PARAM("NUM_AGENTS", 64);
+	p.half_agents = halfpow2(p.num_agents);
 	p.num_sessions = GET_PARAM("NUM_SESSIONS", 16);	
 	p.segs_per_session = GET_PARAM("SEGS_PER_SESSION", 1);
 	p.episode_length = GET_PARAM("EPISODE_LENGTH", 16);
 	p.warmup_length = GET_PARAM("WARMUP_LENGTH", 0);
 	p.benchmark_games = GET_PARAM("BENCHMARK_GAMES", 400);
+	p.rr_games = GET_PARAM("RR_GAMES", 0);
 	p.benchmark_freq = GET_PARAM("BENCHMARK_FREQ", 4);
 	p.iChamp = GET_PARAM("ICHAMP", 0);
 	p.champ = champs[p.iChamp];
