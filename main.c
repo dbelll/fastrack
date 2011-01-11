@@ -74,6 +74,7 @@ void dump_params(PARAMS p)
 	printf("   max_alpha		%7.4f\n", p.max_alpha);
 	printf("   num_opponents    %7d\n", p.num_opponents);
 	printf("   num_sessions     %7d\n", p.num_sessions);
+	printf("   segs_per_session %7d\n", p.segs_per_session);
 	printf("   episode_length   %7d\n", p.episode_length);
 	printf("   warmup_length    %7d\n", p.warmup_length);
 	printf("   benchmark_games  %7d\n", p.benchmark_games);
