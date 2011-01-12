@@ -135,6 +135,8 @@ PARAMS read_params(int argc, const char **argv)
 	p.epsilon = GET_PARAMF("EPSILON", .10f);
 	p.gamma = GET_PARAMF("GAMMA", .95f);
 	p.lambda = GET_PARAMF("LAMBDA", .50f);
+	p.min_lambda = GET_PARAMF("MIN_LAMBDA", p.lambda);
+	p.max_lambda = GET_PARAMF("MAX_LAMBDA", p.lambda);
 	
 	p.num_agents = GET_PARAM("NUM_AGENTS", 64);
 	p.half_agents = halfpow2(p.num_agents);

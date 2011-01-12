@@ -394,6 +394,13 @@ void init_alpha(float *alpha, PARAMS *p)
 	}
 }
 
+void init_lambda(float *lambda, PARAMS *p)
+{
+	for (int iAg = 0; iAg < p->num_agents; iAg++) {
+		lambda[iAg] = p->min_lambda + RandUniform(g_seeds, 1)*(p->max_lambda - p->min_lambda);
+	}
+}
+
 AGENT *init_agentsCPU(PARAMS p)
 {
 	// Save parameters to learning log file
@@ -445,6 +452,7 @@ AGENT *init_agentsCPU(PARAMS p)
 	ag->training_pieces = (unsigned *)malloc(p.num_agents * sizeof(unsigned));
 	init_training_pieces(ag->training_pieces, &p);
 	init_alpha(ag->alpha, &p);
+	init_lambda(ag->lambda, &p);
 	return ag;
 }
 
@@ -1967,6 +1975,10 @@ __global__ void reduce_wl_kernel(WON_LOSS *wl, WON_LOSS *wl_tot, unsigned num_op
 	// copy the totals out to global memory
 	if (idx == 0){
 		wl_tot[iAgent].agent = iAgent;
+		wl_tot[iAgent].alpha = wl[iAgent * num_ops].alpha;
+		wl_tot[iAgent].lambda = wl[iAgent * num_ops].lambda;
+		wl_tot[iAgent].training_pieces = wl[iAgent * num_ops].training_pieces;
+//		wl_tot[iAgent].training_turns = wl[iAgent * num_ops].training_turns;
 		wl_tot[iAgent].games = s_games[0];
 		wl_tot[iAgent].wins = s_wins[0];
 		wl_tot[iAgent].losses = s_losses[0];
@@ -2119,6 +2131,9 @@ __global__ void compete_kernel(unsigned *seeds, float *wgts, float *opwgts, WON_
 
 		if (idx == 0){
 			wl[iAgent * (multiOp ? dc_num_agents : dc_benchmark_ops) + iOpponent].agent = iAgent;
+			wl[iAgent * (multiOp ? dc_num_agents : dc_benchmark_ops) + iOpponent].alpha = dc_ag.alpha[iAgent];
+			wl[iAgent * (multiOp ? dc_num_agents : dc_benchmark_ops) + iOpponent].lambda = dc_ag.lambda[iAgent];
+			wl[iAgent * (multiOp ? dc_num_agents : dc_benchmark_ops) + iOpponent].training_pieces = dc_ag.training_pieces[iAgent];
 			wl[iAgent * (multiOp ? dc_num_agents : dc_benchmark_ops) + iOpponent].games = s_stats[0];
 			wl[iAgent * (multiOp ? dc_num_agents : dc_benchmark_ops) + iOpponent].wins = s_stats[1];
 			wl[iAgent * (multiOp ? dc_num_agents : dc_benchmark_ops) + iOpponent].losses = s_stats[2];
@@ -2152,6 +2167,7 @@ __global__ void old_learn_kernel(unsigned *seeds, float *wgts, float *e, float *
 	__shared__ float s_reward;
 	__shared__ float s_lambda;
 	__shared__ float s_alpha;
+	__shared__ unsigned s_num_pieces;
 	__shared__ float s_V;
 	__shared__ float s_V_prime;
 	__shared__ float s_delta;
@@ -2175,6 +2191,7 @@ __global__ void old_learn_kernel(unsigned *seeds, float *wgts, float *e, float *
 	if (idx == 0){
 		s_lambda = dc_ag.lambda[iAgent];
 		s_alpha = dc_ag.alpha[iAgent];
+		s_num_pieces = dc_ag.training_pieces[iAgent];
 	}
 	// reset the stats or copy from global memory so they can be updated
 	if (idx < 3) {
@@ -2199,7 +2216,8 @@ __global__ void old_learn_kernel(unsigned *seeds, float *wgts, float *e, float *
 	unsigned turn = 0;
 	unsigned total_turns = 0;
 	
-	random_stateGPU(s_state, s_temp, s_seeds, dc_board_size, num_pieces[iAgent]);
+//	random_stateGPU(s_state, s_temp, s_seeds, dc_board_size, num_pieces[iAgent]);
+	random_stateGPU(s_state, s_temp, s_seeds, dc_board_size, s_num_pieces);
 
 	if (idx == 0){
 		s_rand = RandUniform(s_seeds, dc_board_size);
@@ -2234,7 +2252,8 @@ __global__ void old_learn_kernel(unsigned *seeds, float *wgts, float *e, float *
 			}
 			__syncthreads();			
 
-			random_stateGPU(s_state, s_temp, s_seeds, dc_board_size, num_pieces[iAgent]);
+//			random_stateGPU(s_state, s_temp, s_seeds, dc_board_size, num_pieces[iAgent]);
+			random_stateGPU(s_state, s_temp, s_seeds, dc_board_size, s_num_pieces);
 
 			if (s_rand < 0.50f) {
 				if (saved_wgts) take_actionGPU(s_state, s_temp, s_opwgts, s_hidden, s_out, &s_tempui, s_ophidden, &s_tempf);
@@ -2275,7 +2294,13 @@ __global__ void old_learn_kernel(unsigned *seeds, float *wgts, float *e, float *
 
 	// accumulate the won/loss record in global memory 
 	if (wl) {
-		if (idx == 0) wl[iAgent*dc_num_opponents + iOpponent].agent = iAgent;
+		if (idx == 0){
+			wl[iAgent*dc_num_opponents + blockIdx.y].agent = iAgent;
+			wl[iAgent*dc_num_opponents + blockIdx.y].alpha =  s_alpha;
+			wl[iAgent*dc_num_opponents + blockIdx.y].lambda =  s_lambda;
+			wl[iAgent*dc_num_opponents + blockIdx.y].training_pieces =  s_num_pieces;
+//			wl[iAgent*dc_num_opponents + blockIdx.y].training_turns = s_num_turns;
+		}
 		if (idx < 3){
 			*(1 + idx + (unsigned *)(wl + iAgent * dc_num_opponents + blockIdx.y)) = s_stats[idx];
 		}
@@ -2516,7 +2541,9 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 			// this will replace the won-loss information from previous learning session
 			if (g_p.rr_games > 0){
 				do_round_robin(agGPU, &roundRobinTimer);
+//				device_dumpui("unreduced learning WL", (unsigned *)agGPU->wl, g_p.num_agents * g_p.num_agents, 8);
 				do_reduce_wl_for_round_robin(iSession, rGPU, agGPU, &roundRobinTimer);
+//				device_dumpui("reduced learning WL", (unsigned *)(rGPU->standings + iSession * g_p.num_agents), g_p.num_agents, 8);
 			}else {
 				// reduce the won-loss results and store in rGPU->standings
 				do_reduce_wl_for_learning(iSession, rGPU, agGPU, &reduceWonLossTimer);
