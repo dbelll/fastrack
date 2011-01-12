@@ -1,6 +1,6 @@
 Today's Goals
 
-	Write agent parameters to output file
+	Print out lambda on standings
 	Write place in standings to file
 	
 	Vary lambda, Training_Turns by agent
