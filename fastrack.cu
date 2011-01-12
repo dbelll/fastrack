@@ -396,9 +396,9 @@ void init_alpha(float *alpha, PARAMS *p)
 
 void init_lambda(float *lambda, PARAMS *p)
 {
-	for (int iAg = 0; iAg < p->num_agents; iAg++) {
-		lambda[iAg] = p->min_lambda + RandUniform(g_seeds, 1)*(p->max_lambda - p->min_lambda);
-	}
+       for (int iAg = 0; iAg < p->num_agents; iAg++){
+	      lambda[iAg] = p->min_lambda + RandUniform(g_seeds, 1)*(p->max_lambda - p->min_lambda);
+       }
 }
 
 AGENT *init_agentsCPU(PARAMS p)
@@ -1978,7 +1978,6 @@ __global__ void reduce_wl_kernel(WON_LOSS *wl, WON_LOSS *wl_tot, unsigned num_op
 		wl_tot[iAgent].alpha = wl[iAgent * num_ops].alpha;
 		wl_tot[iAgent].lambda = wl[iAgent * num_ops].lambda;
 		wl_tot[iAgent].training_pieces = wl[iAgent * num_ops].training_pieces;
-//		wl_tot[iAgent].training_turns = wl[iAgent * num_ops].training_turns;
 		wl_tot[iAgent].games = s_games[0];
 		wl_tot[iAgent].wins = s_wins[0];
 		wl_tot[iAgent].losses = s_losses[0];
@@ -2216,8 +2215,9 @@ __global__ void old_learn_kernel(unsigned *seeds, float *wgts, float *e, float *
 	unsigned turn = 0;
 	unsigned total_turns = 0;
 	
-//	random_stateGPU(s_state, s_temp, s_seeds, dc_board_size, num_pieces[iAgent]);
+	//	random_stateGPU(s_state, s_temp, s_seeds, dc_board_size, num_pieces[iAgent]);
 	random_stateGPU(s_state, s_temp, s_seeds, dc_board_size, s_num_pieces);
+
 
 	if (idx == 0){
 		s_rand = RandUniform(s_seeds, dc_board_size);
@@ -2252,7 +2252,7 @@ __global__ void old_learn_kernel(unsigned *seeds, float *wgts, float *e, float *
 			}
 			__syncthreads();			
 
-//			random_stateGPU(s_state, s_temp, s_seeds, dc_board_size, num_pieces[iAgent]);
+			//			random_stateGPU(s_state, s_temp, s_seeds, dc_board_size, num_pieces[iAgent]);
 			random_stateGPU(s_state, s_temp, s_seeds, dc_board_size, s_num_pieces);
 
 			if (s_rand < 0.50f) {
@@ -2541,9 +2541,7 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 			// this will replace the won-loss information from previous learning session
 			if (g_p.rr_games > 0){
 				do_round_robin(agGPU, &roundRobinTimer);
-//				device_dumpui("unreduced learning WL", (unsigned *)agGPU->wl, g_p.num_agents * g_p.num_agents, 8);
 				do_reduce_wl_for_round_robin(iSession, rGPU, agGPU, &roundRobinTimer);
-//				device_dumpui("reduced learning WL", (unsigned *)(rGPU->standings + iSession * g_p.num_agents), g_p.num_agents, 8);
 			}else {
 				// reduce the won-loss results and store in rGPU->standings
 				do_reduce_wl_for_learning(iSession, rGPU, agGPU, &reduceWonLossTimer);
