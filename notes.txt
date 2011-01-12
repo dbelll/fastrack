@@ -1,5 +1,15 @@
 Today's Goals
 
+	Write agent parameters to output file
+	Write place in standings to file
+	
+	Vary lambda, Training_Turns
+	
+	copy best agents over worst
+	randomize agent parameters
+	Copy with noise
+	
+
 Questions:
 	Will replacing poor agents with copies of best agents help or hurt overall learning?
 	Will modifying poor agents' parameters help or hurt
