@@ -3,10 +3,10 @@ Today's Goals
 	Write agent parameters to output file
 	Write place in standings to file
 	
-	Vary lambda, Training_Turns
+	Vary lambda, Training_Turns by agent
 	
-	copy best agents over worst
-	randomize agent parameters
+	copy best agents replacing the worst ones
+	randomize agent parameters for copies
 	Copy with noise
 	
 
