@@ -2486,7 +2486,7 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 	WON_LOSS *lastStandings = (WON_LOSS *)malloc(g_p.num_agents * sizeof(WON_LOSS));
 	WON_LOSS *lastVsChamp = (WON_LOSS *)malloc(g_p.num_agents * sizeof(WON_LOSS));
 	
-	float copyWgtsTimer, shareDeltaTimer, learnTimer, reduceWonLossTimer, roundRobinTimer, competeTimer, standingsTimer;
+	float copyWgtsTimer = 0.0f, shareDeltaTimer = 0.0f, learnTimer = 0.0f, roundRobinTimer = 0.0f, competeTimer = 0.0f, standingsTimer = 0.0f;
 	copyWgtsTimer = 0.0f;
 	
 //	dim3 blockDim(g_p.board_size);
