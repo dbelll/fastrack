@@ -2528,7 +2528,8 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 		for (int iSeg = 0; iSeg < g_p.segs_per_session; iSeg++) {
 
 			// copy current agent weights to the saved_wgts area
-			if (0 == iSeg && 0 == ((1+iSession) % g_p.refresh_op_wgts_freq)) do_copy_wgts(agGPU, &copyWgtsTimer);
+//			if (0 == iSeg && 0 == ((1+iSession) % g_p.refresh_op_wgts_freq)) do_copy_wgts(agGPU, &copyWgtsTimer);
+			do_copy_wgts(agGPU, &copyWgtsTimer);
 
 			do_learning(iSeg, iSession, agGPU, &learnTimer);
 			
