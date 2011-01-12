@@ -44,6 +44,7 @@ enum OPPONENT_METHODS {
 	OM_BEST1,		// 3
 	OM_BEST2,		// 4
 	OM_ONE,			// 5
+	OM_DEBUG,		// 6
 };
 
 /*

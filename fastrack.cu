@@ -1920,7 +1920,17 @@ void update_opgrid(enum OPPONENT_METHODS method, WON_LOSS *lastStandings, unsign
 				}
 			}
 			break;
-			
+		
+		case OM_DEBUG:		// same as OM_FIXED1, but in reverse order
+			printf("updating opponents: OM_DEBUG\n");
+			for (int iSeg = 0; iSeg < g_p.segs_per_session; iSeg++) {
+				for (int iOp = 0; iOp < g_p.num_opponents; iOp++) {
+					if (0 == iSeg % 2)
+						g_p.opgrid[iSeg * g_p.num_opponents + iOp] = g_p.num_opponents - iOp - 1;
+					else
+						g_p.opgrid[iSeg * g_p.num_opponents + iOp] = iOp;
+				}
+			}
 		default:
 			printf("*** ERROR *** Unknown opponent selection method\n");
 			break;
