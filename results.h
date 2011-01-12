@@ -166,7 +166,7 @@ void print_standings_aux(unsigned *training_pieces, float *alpha, float *lambda,
 {
 	unsigned printBenchmark = 0 < vsChamp[0].games;
 	qsort(standings, g_p.num_agents, sizeof(WON_LOSS), wl_compare);
-	printf(    "                         G     W     L    PCT");
+	printf(    "                               G     W     L    PCT");
 	if (printBenchmark) printf("    %4d games vs Champ\n", g_p.benchmark_games);
 	else printf("\n");
 	
