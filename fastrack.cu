@@ -2495,7 +2495,7 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 //	dim3 blockDim_wgtCopy(g_p.wgts_stride);
 //	dim3 gridDim_wgtCopy(1, g_p.num_agents);
 //	if (blockDim_wgtCopy.x > 512) {
-//		blockDim_wgtCopy.x = 512;
+//		blockDim_wgtCopy.x = 512; 
 //		gridDim_wgtCopy.x = 1 + (g_p.wgts_stride - 1) / 512;
 //	}
 //	
@@ -2545,7 +2545,7 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 				do_reduce_wl_for_round_robin(iSession, rGPU, agGPU, &roundRobinTimer);
 			}else {
 				// reduce the won-loss results and store in rGPU->standings
-				do_reduce_wl_for_learning(iSession, rGPU, agGPU, &reduceWonLossTimer);
+				do_reduce_wl_for_learning(iSession, rGPU, agGPU, &learnTimer);
 			}
 		}
 
