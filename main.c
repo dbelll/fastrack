@@ -72,8 +72,8 @@ void dump_params(PARAMS p)
 	printf("   max_pieces       %7d\n", p.max_pieces);
 	printf("   min_alpha	    %7.4f\n", p.min_alpha);
 	printf("   max_alpha	    %7.4f\n", p.max_alpha);
-	printf("   min_lambda       $7.4f\n", p.min_lambda);
-	printf("   max_lambda       $7.4f\n", p.max_lambda);
+	printf("   min_lambda       %7.4f\n", p.min_lambda);
+	printf("   max_lambda       %7.4f\n", p.max_lambda);
 	printf("   num_opponents    %7d\n", p.num_opponents);
 	printf("   num_sessions     %7d\n", p.num_sessions);
 	printf("   segs_per_session %7d\n", p.segs_per_session);
