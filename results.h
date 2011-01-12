@@ -90,7 +90,7 @@ void dumpResultsAux(FILE *f, WON_LOSS *standings, WON_LOSS *vsChamp)
 		qsort(standings + iSession * g_p.num_agents, g_p.num_agents, sizeof(WON_LOSS), wl_byagent);
 		for (int iAg = 0; iAg < g_p.num_agents; iAg++) {
 			unsigned iStand = iSession * g_p.num_agents + iAg;
-			fprintf(f, "%d, %d, %d, %d, %d, %d, %d, %d\n", iSession, iAg, standings[iStand].games, standings[iStand].wins, standings[iStand].losses, vsChamp[iStand].games, vsChamp[iStand].wins, vsChamp[iStand].losses);
+			fprintf(f, "%d, %d, %d, %d, %d, %d, %d, %d %f %f %d\n", iSession, iAg, standings[iStand].games, standings[iStand].wins, standings[iStand].losses, vsChamp[iStand].games, vsChamp[iStand].wins, vsChamp[iStand].losses, standings[iStand].alpha, standings[iStand].lambda, standings[iStand].training_pieces);
 		}
 	}
 //	printf("done.\n");

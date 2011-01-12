@@ -145,7 +145,10 @@ typedef struct {
 	float epsilon;				// default exploration rate
 	float gamma;				// default discount rate
 	float lambda;				// default lambda
-	
+  float min_lambda;
+  float max_lambda;
+  
+
 	unsigned num_agents;		// number of agents in population 
 	unsigned num_sessions;		// number of learning sessions with num_agents episodes in each
 	unsigned segs_per_session;	// segments per session
@@ -204,6 +207,11 @@ typedef struct {
 	unsigned games;
 	unsigned wins;
 	unsigned losses;
+  float alpha;
+  float epsilon;
+  float lambda;
+  unsigned training_pieces;
+  unsigned training_turns;
 } WON_LOSS;
 
 // AGENT structure is used to consolidate the pointers to all agent data.  Pointers may be

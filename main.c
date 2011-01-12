@@ -70,8 +70,10 @@ void dump_params(PARAMS p)
 	printf("   num_agents       %7d\n", p.num_agents);
 	printf("   min_pieces       %7d\n", p.min_pieces);
 	printf("   max_pieces       %7d\n", p.max_pieces);
-	printf("   min_alpha		%7.4f\n", p.min_alpha);
-	printf("   max_alpha		%7.4f\n", p.max_alpha);
+	printf("   min_alpha	    %7.4f\n", p.min_alpha);
+	printf("   max_alpha	    %7.4f\n", p.max_alpha);
+	printf("   min_lambda       $7.4f\n", p.min_lambda);
+	printf("   max_lambda       $7.4f\n", p.max_lambda);
 	printf("   num_opponents    %7d\n", p.num_opponents);
 	printf("   num_sessions     %7d\n", p.num_sessions);
 	printf("   segs_per_session %7d\n", p.segs_per_session);
@@ -135,6 +137,8 @@ PARAMS read_params(int argc, const char **argv)
 	p.epsilon = GET_PARAMF("EPSILON", .10f);
 	p.gamma = GET_PARAMF("GAMMA", .95f);
 	p.lambda = GET_PARAMF("LAMBDA", .50f);
+	p.min_lambda = GET_PARAMF("MIN_LAMBDA", p.lambda);
+	p.max_lambda = GET_PARAMF("MAX_LAMBDA", p.lambda);
 	
 	p.num_agents = GET_PARAM("NUM_AGENTS", 64);
 	p.half_agents = halfpow2(p.num_agents);
