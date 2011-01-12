@@ -2585,7 +2585,7 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 	PRINT_TIME(copyWgtsTimer, "GPU copy wgts");
 	PRINT_TIME(learnTimer, "GPU learning");
 	PRINT_TIME(shareDeltaTimer, "GPU share delta");
-	PRINT_TIME(reduceWonLossTimer, "GPU reduce won-loss for learning");
+//	PRINT_TIME(reduceWonLossTimer, "GPU reduce won-loss for learning");
 	PRINT_TIME(roundRobinTimer, "GPU round robin");
 	PRINT_TIME(competeTimer, "GPU compete vs benchmark");
 	PRINT_TIME(standingsTimer, "GPU standings");
