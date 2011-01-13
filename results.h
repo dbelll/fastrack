@@ -148,7 +148,7 @@ unsigned dumpResultsGPU(RESULTS *rGPU)
 	char filename_buffer[4096];
 	srandom(clock());
 	unsigned ii = random();
-	snprintf("%s%d.csv", 4096, LEARNING_LOG_FILE_GPU, ii);
+	snprintf(filename_buffer, 4096, "%s%d.csv", LEARNING_LOG_FILE_GPU, ii);
 
 	WON_LOSS *standings = copy_standings_to_CPU(rGPU);
 	WON_LOSS *vsChamp = copy_vsChamp_to_CPU(rGPU);
