@@ -21,7 +21,7 @@ void save_parameters(FILE *f)
 	fprintf(f, "NUM_HIDDEN, %d\n", g_p.num_hidden);
 	fprintf(f, "INIT_WGT_MIN and MAX, %9.6f, %9.6f\n", g_p.init_wgt_min, g_p.init_wgt_max);
 	fprintf(f, "NUM_AGENTS, %d, NUM_OPPONENTS, %d, OP_METHOD, %d, DETERMINE_BEST_OP_FREQ, %d\n", g_p.num_agents, g_p.num_opponents, g_p.op_method, g_p.determine_best_op_freq);
-	fprintf(f, "NUM_SESSIONS, %d, SEGS_PER_SESSION, %d\n", g_p.num_sessions, g_p.segs_per_session);
+	fprintf(f, "NUM_SESSIONS, %d, SEGS_PER_SESSION, %d, NUM_REPLICATE, %d\n", g_p.num_sessions, g_p.segs_per_session, g_p.num_replicate);
 	fprintf(f, "EPISODE_LENGTH, %d\n", g_p.episode_length);
 	fprintf(f, "WARMUP_LENGTH, %d\n", g_p.warmup_length);
 	fprintf(f, "alpha, %9.6f\n", g_p.alpha);
