@@ -1952,7 +1952,7 @@ void update_opgrid(enum OPPONENT_METHODS method, WON_LOSS *lastStandings, unsign
 }
 
 // replicate agents based on the map in dc_rep_map, copying the wgts and parameters
-__global__ void replicate_kernel(float *wgts, float *alpha, float *lambda, unsigned *training_pieces)
+__global__ void replicate_kernel(float *wgts, float *alpha, float *lambda, unsigned *training_pieces, unsigned *seeds, unsigned stride)
 {
 	unsigned idx = threadIdx.x + blockIdx.x * blockDim.x;
 	unsigned iAgentFrom = dc_rep_map[blockIdx.y * 2];
@@ -1965,9 +1965,12 @@ __global__ void replicate_kernel(float *wgts, float *alpha, float *lambda, unsig
 	
 	// next copy the parameters
 	if (idx == 0) {
-		alpha[iAgentTo] = alpha[iAgentFrom];
-		lambda[iAgentTo] = lambda[iAgentFrom];
-		training_pieces[iAgentTo] = training_pieces[iAgentFrom];
+		alpha[iAgentTo] = alpha[iAgentFrom] * (0.75f + 0.50f * RandUniform(seeds + iAgentTo, stride));
+		if (alpha[iAgentTo] > 1.0f) alpha[iAgentTo] = 1.0f;
+		lambda[iAgentTo] = lambda[iAgentFrom] * (0.75f + 0.50f * RandUniform(seeds + iAgentTo, stride));
+		if (lambda[iAgentTo] > 1.0f) lambda[iAgentTo] = 1.0f;
+		training_pieces[iAgentTo] = training_pieces[iAgentFrom] - 1 + 3 * RandUniform(seeds + iAgentTo, stride);
+		if (training_pieces[iAgentTo] < 2) training_pieces[iAgentTo] = 2;
 	}
 }
 
@@ -2516,11 +2519,9 @@ void do_replication(AGENT *agGPU, WON_LOSS *lastStandings)
 		printf("replication: replace agent %d with copy of %d\n", h_rep_map[2*i+1], h_rep_map[2*i]);
 	}
 	
-	device_dumpf("alpha, before replication", agGPU->alpha, g_p.num_agents, 1);
+//	device_dumpf("alpha, before replication", agGPU->alpha, g_p.num_agents, 1);
 
 	CUDA_SAFE_CALL(cudaMemcpy(agGPU->rep_map,  h_rep_map, 2 * g_p.num_replicate * sizeof(unsigned),cudaMemcpyHostToDevice));
-
-	device_dumpf("alpha, after replication", agGPU->alpha, g_p.num_agents, 1);
 
 	// launch the replication kernel
 	dim3 blockDim(g_p.wgts_stride);
@@ -2531,8 +2532,10 @@ void do_replication(AGENT *agGPU, WON_LOSS *lastStandings)
 	}
 
 	PRE_KERNEL("replicate_kernel");
-	replicate_kernel<<<gridDim, blockDim>>>(agGPU->wgts, agGPU->alpha, agGPU->lambda, agGPU->training_pieces);
+	replicate_kernel<<<gridDim, blockDim>>>(agGPU->wgts, agGPU->alpha, agGPU->lambda, agGPU->training_pieces, agGPU->seeds, g_p.num_agents);
 	POST_KERNEL(replicate_kernel);
+
+//	device_dumpf("alpha, after replication", agGPU->alpha, g_p.num_agents, 1);
 	
 }
 
