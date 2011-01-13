@@ -160,6 +160,7 @@ typedef struct {
 	unsigned benchmark_freq;	// the frequency of running the benchmark, in number of sessions
 	unsigned rr_games;			// the number of games for the round-robin competition (is any)
 	unsigned standings_freq;	// the fequency of determining the standings and reseting agent w-l stats
+	unsigned num_replicate;		// number of agents to replicate after determining the standings
 	unsigned refresh_op_wgts_freq;	// the frequency for refreshing the opponents wgts used for learning
 	unsigned determine_best_op_freq;		// the frequency to determine the best opponent
 											// should be a multiple of the refresh_op_wgts_freq
@@ -229,8 +230,9 @@ typedef struct{
 	unsigned *next_to_play; // 0 ==> X, 1 ==> O (num_agents)
 	WON_LOSS *wl;		// temporary area to store won-loss information prior to reducing
 						// (num_agents * num_opponents * sizeof(WON_LOSS)
-	unsigned *training_pieces;	// number of pieces per side to learn with
-	unsigned *training_turns;		// maximum number of moves per game
+	unsigned *training_pieces;	// number of pieces per side to learn with	(num_agents)
+	unsigned *training_turns;		// maximum number of moves per game		(num_agents)
+	unsigned *rep_map;	// a temporary area to hold the agent numbers being copied and replaced (2 * num_replication)
 } AGENT;
 
 // RESULTS holds pointers to the results of the learning, which are always on the CPU

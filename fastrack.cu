@@ -362,7 +362,9 @@ void freeAgentGPU(AGENT *ag)
 		if (ag->states) CUDA_SAFE_CALL(cudaFree(ag->states));
 		if (ag->next_to_play) CUDA_SAFE_CALL(cudaFree(ag->next_to_play));
 		if (ag->wgts) CUDA_SAFE_CALL(cudaFree(ag->wgts));
+		if (ag->training_pieces) CUDA_SAFE_CALL(cudaFree(ag->training_pieces));
 		if (ag->delta_wgts) CUDA_SAFE_CALL(cudaFree(ag->delta_wgts));
+		if (ag->rep_map) CUDA_SAFE_CALL(cudaFree(ag->rep_map));
 		CUDA_SAFE_CALL(cudaFree(ag));
 	}
 }
@@ -474,6 +476,10 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 //	agGPU->training_turns = device_copyui(agCPU->training_turns, g_p.num_agents);
 	set_agent_float_pointers(agGPU);
 	
+	if (g_p.num_replicate > 0) agGPU->rep_map = device_allocui(2 * g_p.num_replicate);
+	else agGPU->rep_map = NULL;
+	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_rep_map", &agGPU->rep_map, sizeof(unsigned *)));
+
 //	printf("agGPU->seeds %p\n", agGPU->seeds);
 //	printf("agGPU->states %p\n", agGPU->states);
 //	printf("agGPU->wgts %p\n", agGPU->wgts);
@@ -1931,6 +1937,8 @@ void update_opgrid(enum OPPONENT_METHODS method, WON_LOSS *lastStandings, unsign
 						g_p.opgrid[iSeg * g_p.num_opponents + iOp] = iOp;
 				}
 			}
+			break;
+			
 		default:
 			printf("*** ERROR *** Unknown opponent selection method\n");
 			break;
@@ -1941,6 +1949,26 @@ void update_opgrid(enum OPPONENT_METHODS method, WON_LOSS *lastStandings, unsign
 	
 	printf("just stored opponent array on device:\n");
 	dump_opponent_array();
+}
+
+// replicate agents based on the map in dc_rep_map, copying the wgts and parameters
+__global__ void replicate_kernel(float *wgts, float *alpha, float *lambda, unsigned *training_pieces)
+{
+	unsigned idx = threadIdx.x + blockIdx.x * blockDim.x;
+	unsigned iAgentFrom = dc_rep_map[blockIdx.y * 2];
+	unsigned iAgentTo = dc_rep_map[blockIdx.y * 2 + 1];
+	
+	// first copy all the weights (similar to copy_wgts_kernel)
+	if (idx < dc_wgts_stride) {
+		wgts[iAgentTo * dc_wgts_stride + idx] = wgts[iAgentFrom * dc_wgts_stride + idx];
+	}
+	
+	// next copy the parameters
+	if (idx == 0) {
+		alpha[iAgentTo] = alpha[iAgentFrom];
+		lambda[iAgentTo] = lambda[iAgentFrom];
+		training_pieces[iAgentTo] = training_pieces[iAgentFrom];
+	}
 }
 
 // sum up the won-loss results for each agent 
@@ -2475,6 +2503,38 @@ void do_reduce_wl_for_round_robin(unsigned iSession, RESULTS *rGPU, AGENT *agGPU
 	CUDA_EVENT_STOP(*timer);
 }
 
+// replicate the best agents, replacing the worst
+void do_replication(AGENT *agGPU, WON_LOSS *lastStandings)
+{
+	if (agGPU->rep_map == NULL) return;
+	
+	// build the replacement map
+	unsigned *h_rep_map = (unsigned *)malloc(g_p.num_replicate * 2 * sizeof(unsigned));
+	for (int i = 0; i < g_p.num_replicate; i++) {
+		h_rep_map[2*i] = lastStandings[i].agent;
+		h_rep_map[2*i+1] = lastStandings[g_p.num_agents - i - 1].agent;
+		printf("replication: replace agent %d with copy of %d\n", h_rep_map[2*i+1], h_rep_map[2*i]);
+	}
+	
+	device_dumpf("alpha, before replication", agGPU->alpha, g_p.num_agents, 1);
+
+	CUDA_SAFE_CALL(cudaMemcpy(agGPU->rep_map,  h_rep_map, 2 * g_p.num_replicate * sizeof(unsigned),cudaMemcpyHostToDevice));
+
+	device_dumpf("alpha, after replication", agGPU->alpha, g_p.num_agents, 1);
+
+	// launch the replication kernel
+	dim3 blockDim(g_p.wgts_stride);
+	dim3 gridDim(1, g_p.num_replicate);
+	if (blockDim.x > 512) {
+		blockDim.x = 512;
+		gridDim.x = 1 + (g_p.wgts_stride - 1) / 512;
+	}
+
+	PRE_KERNEL("replicate_kernel");
+	replicate_kernel<<<gridDim, blockDim>>>(agGPU->wgts, agGPU->alpha, agGPU->lambda, agGPU->training_pieces);
+	POST_KERNEL(replicate_kernel);
+	
+}
 
 RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 {
@@ -2497,7 +2557,6 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 	WON_LOSS *lastVsChamp = (WON_LOSS *)malloc(g_p.num_agents * sizeof(WON_LOSS));
 	
 	float copyWgtsTimer = 0.0f, shareDeltaTimer = 0.0f, learnTimer = 0.0f, roundRobinTimer = 0.0f, competeTimer = 0.0f, standingsTimer = 0.0f;
-	copyWgtsTimer = 0.0f;
 	
 //	dim3 blockDim(g_p.board_size);
 //	dim3 gridDim(g_p.num_agents);
@@ -2567,8 +2626,7 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 			do_reduce_wl_for_compete(iSession, rGPU, agGPU, &competeTimer);
 		}
 
-		{
-		CUDA_EVENT_PREPARE;
+		{ CUDA_EVENT_PREPARE;
 		CUDA_EVENT_START;
 		if (0 == ((1+iSession) % g_p.standings_freq)) {
 
@@ -2577,8 +2635,11 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 			CUDA_SAFE_CALL(cudaMemcpy(lastVsChamp, rGPU->vsChamp + iSession * g_p.num_agents, g_p.num_agents * sizeof(WON_LOSS), cudaMemcpyDeviceToHost));
 			printf("\n\n********** Session %d **********\n", iSession);
 			print_standingsGPU(agGPU, lastStandings, lastVsChamp);
-			timing_feedback_header(g_p.standings_freq);
 
+			// replicate the best
+			if (g_p.num_replicate > 0) do_replication(agGPU, lastStandings);
+
+			timing_feedback_header(g_p.standings_freq);
 		}
 		
 		// update the opponents used in learning
@@ -2588,8 +2649,8 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 			update_opgrid(g_p.op_method, lastStandings, 0);
 		}
 		cudaThreadSynchronize();
-		CUDA_EVENT_STOP(standingsTimer);
-		}
+		CUDA_EVENT_STOP(standingsTimer); }
+		
 	}
 
 	PRINT_TIME(copyWgtsTimer, "GPU copy wgts");

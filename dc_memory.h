@@ -46,6 +46,7 @@ __constant__ unsigned dc_benchmark_games_per_op;
 __constant__ unsigned dc_rr_games_per_op;
 __constant__ unsigned dc_benchmark_ops;
 __constant__ unsigned dc_half_benchmark_ops;
+__constant__ unsigned *dc_rep_map;  // pointer to replication map
 
 //__constant__ unsigned dc_opgrid[MAX_OPPONENTS];
 

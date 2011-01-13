@@ -152,6 +152,7 @@ PARAMS read_params(int argc, const char **argv)
 	p.iChamp = GET_PARAM("ICHAMP", 0);
 	p.champ = champs[p.iChamp];
 	p.standings_freq = GET_PARAM("STANDINGS_FREQ", p.benchmark_freq);
+	p.num_replicate = GET_PARAM("NUM_REPLICATE", 0);
 	p.refresh_op_wgts_freq = GET_PARAM("REFRESH_OP_WGTS_FREQ", 1);
 	p.determine_best_op_freq = GET_PARAM("DETERMINE_BEST_OP_FREQ", p.standings_freq);
 	p.begin_using_best_ops = GET_PARAM("BEGIN_USING_BEST_OPS", 1000000);
