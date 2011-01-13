@@ -249,14 +249,15 @@ int main(int argc, const char **argv)
 	
 	printf("done runs\n");
 
+	unsigned idGPU = 0;
 	if (resultsCPU) dumpResults(resultsCPU);
-	if (resultsGPU) dumpResultsGPU(resultsGPU);
+	if (resultsGPU) idGPU = dumpResultsGPU(resultsGPU);
 
 	printf("done dump results\n");
 	
 	// Save best agents to file
 	if (p.run_on_CPU && resultsCPU) save_agentsCPU(agCPU, resultsCPU);
-	if (p.run_on_GPU && resultsGPU) save_agentsGPU(agGPU, resultsGPU);
+	if (p.run_on_GPU && resultsGPU) save_agentsGPU(agGPU, resultsGPU, idGPU);
 	
 	freeResults(resultsCPU);
 	freeResultsGPU(resultsGPU);

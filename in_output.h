@@ -293,7 +293,7 @@ void dump_agent_paramsGPU(const char *str, AGENT *agGPU)
 }
 
 // save GPU agent data to file
-void save_agentsGPU(AGENT *d_agGPU, RESULTS *rGPU)
+void save_agentsGPU(AGENT *d_agGPU, RESULTS *rGPU, unsigned ii)
 {
 	printf("save_agentsGPU\n");
 	AGENT *h_agGPU = copy_agents_to_host(d_agGPU);
@@ -309,22 +309,28 @@ void save_agentsGPU(AGENT *d_agGPU, RESULTS *rGPU)
 	// print standings to force a sort
 	print_standingsCPU(h_agGPU, lastStandings, lastVsChamp);
 	
+	char filename_buffer[4096];
+	
 	
 #ifdef AGFILE_GPU0
 	printf("saving agent %d who came in 1st ...\n", lastStandings[0].agent);
-	save_agent(AGFILE_GPU0, h_agGPU, lastStandings[0].agent);
+	snprintf(filename_buffer, 4096, "%s%d.agent", AGFILE_GPU0, ii);
+	save_agent(filename_buffer, h_agGPU, lastStandings[0].agent);
 #endif
 #ifdef AGFILE_GPU1
 	printf("saving agent %d who came in 2nd ...\n", lastStandings[1].agent);
-	save_agent(AGFILE_GPU1, h_agGPU, lastStandings[1].agent);
+	snprintf(filename_buffer, 4096, "%s%d.agent", AGFILE_GPU1, ii);
+	save_agent(filename_buffer, h_agGPU, lastStandings[1].agent);
 #endif
 #ifdef AGFILE_GPU2
 	printf("saving agent %d who came in 3rd ...\n", lastStandings[2].agent);
-	save_agent(AGFILE_GPU2, h_agGPU, lastStandings[2].agent);
+	snprintf(filename_buffer, 4096, "%s%d.agent", AGFILE_GPU2, ii);
+	save_agent(filename_buffer, h_agGPU, lastStandings[2].agent);
 #endif
 #ifdef AGFILE_GPU3
 	printf("saving agent %d who came in 4th ...\n", lastStandings[3].agent);
-	save_agent(AGFILE_GPU3, h_agGPU, lastStandings[3].agent);
+	snprintf(filename_buffer, 4096, "%s%d.agent", AGFILE_GPU3, ii);
+	save_agent(filename_buffer, h_agGPU, lastStandings[3].agent);
 #endif
 	
 	free(lastStandings);

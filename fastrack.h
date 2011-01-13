@@ -15,8 +15,8 @@
 #define MAX_BOARD_SIZE MAX_BOARD_DIMENSION * MAX_BOARD_DIMENSION
 #define MAX_STATE_SIZE MAX_BOARD_SIZE * 2
 
-#define LEARNING_LOG_FILE "standings.csv"
-#define LEARNING_LOG_FILE_GPU "standingsGPU.csv"
+#define LEARNING_LOG_FILE "standings"
+#define LEARNING_LOG_FILE_GPU "standingsGPU"
 
 #define AGFILE_GPU0 "GPU0.agent"		// filename for saved agent data
 #define AGFILE_GPU1 "GPU1.agent"
@@ -252,14 +252,14 @@ AGENT *init_agentsGPU(AGENT *agCPU);
 void dump_agentsCPU(const char *str, AGENT *agCPU, unsigned dumpW, unsigned dumpS);
 float *load_champ(const char *file);
 void save_agentsCPU(AGENT *agCPU, RESULTS *rCPU);
-void save_agentsGPU(AGENT *agGPU, RESULTS *rGPU);
+void save_agentsGPU(AGENT *agGPU, RESULTS *rGPU, unsigned ii);
 
 void freeAgentCPU(AGENT *ag);
 void freeAgentGPU(AGENT *ag);
 
 RESULTS *newResults(PARAMS *p);
 void dumpResults(RESULTS *ag);
-void dumpResultsGPU(RESULTS *ag);
+unsigned dumpResultsGPU(RESULTS *ag);
 void freeResults(RESULTS *r);
 void freeResultsGPU(RESULTS *r);
 
