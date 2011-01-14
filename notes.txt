@@ -1,12 +1,10 @@
 Today's Goals
 
-	Print out lambda on standings
 	Write place in standings to file
 	
-	Vary lambda, Training_Turns by agent
+	Vary episode length by agent
+	Experiment with frequency of replication
 	
-	copy best agents replacing the worst ones
-	randomize agent parameters for copies
 	Copy with noise
 	
 
@@ -42,9 +40,6 @@ Fixes:
 	
 	Create fixed baseline that shows good learning
 	
-	Test GPUs random move generator
-	implement random warm-up on GPU
-
 	Review code for memory leaks oh host and device
 
 	build a program to test agents on set board positions
