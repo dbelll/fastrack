@@ -18,18 +18,18 @@
 
 #ifndef NO_OUTPUT
 
-#define VERBOSE
+//#define VERBOSE
 
-#define DUMP_MOVES
+//#define DUMP_MOVES
 //#define DUMP_ALL_AGENT_UPDATES
 //#define SHOW_SAMPLE_GAMES_AFTER_LEARNING 4
 
-//#define DUMP_INITIAL_AGENTS
-#define DUMP_FINAL_AGENTS_CPU
-#define DUMP_FINAL_AGENTS_GPU
+#define DUMP_INITIAL_AGENTS
+//#define DUMP_FINAL_AGENTS_CPU
+//#define DUMP_FINAL_AGENTS_GPU
 //#define DUMP_CHAMP_WGTS
 
-#define AGENT_DUMP_BOARD_ONLY
+//#define AGENT_DUMP_BOARD_ONLY
 
 #define DUMP_SAVED_WGTS 0				// 1 => dump saved weights, 0 => don't dump them
 

@@ -161,6 +161,7 @@ typedef struct {
 	unsigned rr_games;			// the number of games for the round-robin competition (is any)
 	unsigned standings_freq;	// the fequency of determining the standings and reseting agent w-l stats
 	unsigned num_replicate;		// number of agents to replicate after determining the standings
+	float replicate_noise;		// noise factor when replicating wgts
 	unsigned refresh_op_wgts_freq;	// the frequency for refreshing the opponents wgts used for learning
 	unsigned determine_best_op_freq;		// the frequency to determine the best opponent
 											// should be a multiple of the refresh_op_wgts_freq
@@ -169,7 +170,6 @@ typedef struct {
 								// 2 ==> use 1/2 of agents, 4 ==> use 1/4, etc.
 	unsigned num_opponents;		// the number of opponents each session
 								// = num_agents / op_fraction
-	unsigned num_replace;		// number of agents replaced by copies of best agents whenever the standings are determined
 	enum OPPONENT_METHODS op_method;	// opponent assignment method
 	unsigned half_agents;		
 	unsigned half_opponents;	// largest power of 2 less than num_opponents

@@ -363,6 +363,7 @@ void freeAgentGPU(AGENT *ag)
 		if (ag->next_to_play) CUDA_SAFE_CALL(cudaFree(ag->next_to_play));
 		if (ag->wgts) CUDA_SAFE_CALL(cudaFree(ag->wgts));
 		if (ag->training_pieces) CUDA_SAFE_CALL(cudaFree(ag->training_pieces));
+		if (ag->training_turns) CUDA_SAFE_CALL(cudaFree(ag->training_turns));
 		if (ag->delta_wgts) CUDA_SAFE_CALL(cudaFree(ag->delta_wgts));
 		if (ag->rep_map) CUDA_SAFE_CALL(cudaFree(ag->rep_map));
 		CUDA_SAFE_CALL(cudaFree(ag));
@@ -377,6 +378,7 @@ void freeAgentCPU(AGENT *ag)
 		if (ag->next_to_play) free(ag->next_to_play);
 		if (ag->wgts) free(ag->wgts);
 		if (ag->training_pieces) free(ag->training_pieces);
+		if (ag->training_turns) free(ag->training_turns);
 		free(ag);
 	}
 }
@@ -406,13 +408,13 @@ void init_lambda(float *lambda, PARAMS *p)
 AGENT *init_agentsCPU(PARAMS p)
 {
 	// Save parameters to learning log file
-	FILE *f = fopen(LEARNING_LOG_FILE, "w");
-	if (!f) {
-		printf("could not open LEARNING_LOG_FILE\n");
-		exit(-1);
-	}
-	save_parameters(f);
-	fclose(f);
+//	FILE *f = fopen(LEARNING_LOG_FILE, "w");
+//	if (!f) {
+//		printf("could not open LEARNING_LOG_FILE\n");
+//		exit(-1);
+//	}
+//	save_parameters(f);
+//	fclose(f);
 	
 	printf("init_agentsCPU...\n");
 
@@ -452,6 +454,7 @@ AGENT *init_agentsCPU(PARAMS p)
 	}
 
 	ag->training_pieces = (unsigned *)malloc(p.num_agents * sizeof(unsigned));
+	ag->training_turns = (unsigned *)malloc(p.num_agents * sizeof(unsigned));
 	init_training_pieces(ag->training_pieces, &p);
 	init_alpha(ag->alpha, &p);
 	init_lambda(ag->lambda, &p);
@@ -473,7 +476,7 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 	agGPU->wgts = device_copyf(agCPU->wgts, g_p.num_agent_floats * g_p.num_agents);
 	agGPU->training_pieces = device_copyui(agCPU->training_pieces, g_p.num_agents);
 //	device_dumpui("agent training_pieces:", agGPU->training_pieces, g_p.num_agents, 1);
-//	agGPU->training_turns = device_copyui(agCPU->training_turns, g_p.num_agents);
+	agGPU->training_turns = device_copyui(agCPU->training_turns, g_p.num_agents);
 	set_agent_float_pointers(agGPU);
 	
 	if (g_p.num_replicate > 0) agGPU->rep_map = device_allocui(2 * g_p.num_replicate);
@@ -1952,7 +1955,7 @@ void update_opgrid(enum OPPONENT_METHODS method, WON_LOSS *lastStandings, unsign
 }
 
 // replicate agents based on the map in dc_rep_map, copying the wgts and parameters
-__global__ void replicate_kernel(float *wgts, float *alpha, float *lambda, unsigned *training_pieces, unsigned *seeds, unsigned stride)
+__global__ void replicate_kernel(float *wgts, float *alpha, float *lambda, unsigned *training_pieces, unsigned *seeds, unsigned stride, float noise)
 {
 	unsigned idx = threadIdx.x + blockIdx.x * blockDim.x;
 	unsigned iAgentFrom = dc_rep_map[blockIdx.y * 2];
@@ -1960,7 +1963,9 @@ __global__ void replicate_kernel(float *wgts, float *alpha, float *lambda, unsig
 	
 	// first copy all the weights (similar to copy_wgts_kernel)
 	if (idx < dc_wgts_stride) {
-		wgts[iAgentTo * dc_wgts_stride + idx] = wgts[iAgentFrom * dc_wgts_stride + idx];
+		float k = 1.0f;
+		if (noise > 0.0f) k += noise * (-1.0f + 2.0f * RandUniform(seeds + threadIdx.x, stride));
+		wgts[iAgentTo * dc_wgts_stride + idx] = k * wgts[iAgentFrom * dc_wgts_stride + idx];
 	}
 	
 	// next copy the parameters
@@ -2511,6 +2516,8 @@ void do_replication(AGENT *agGPU, WON_LOSS *lastStandings)
 {
 	if (agGPU->rep_map == NULL) return;
 	
+//	dump_agentsGPU("before replication", agGPU, 1, 0);
+	
 	// build the replacement map
 	unsigned *h_rep_map = (unsigned *)malloc(g_p.num_replicate * 2 * sizeof(unsigned));
 	for (int i = 0; i < g_p.num_replicate; i++) {
@@ -2524,18 +2531,17 @@ void do_replication(AGENT *agGPU, WON_LOSS *lastStandings)
 	CUDA_SAFE_CALL(cudaMemcpy(agGPU->rep_map,  h_rep_map, 2 * g_p.num_replicate * sizeof(unsigned),cudaMemcpyHostToDevice));
 
 	// launch the replication kernel
-	dim3 blockDim(g_p.wgts_stride);
-	dim3 gridDim(1, g_p.num_replicate);
-	if (blockDim.x > 512) {
-		blockDim.x = 512;
-		gridDim.x = 1 + (g_p.wgts_stride - 1) / 512;
-	}
+	dim3 blockDim(g_p.num_agents);
+	dim3 gridDim(1 + (g_p.wgts_stride-1)/g_p.num_agents, g_p.num_replicate);
 
 	PRE_KERNEL("replicate_kernel");
-	replicate_kernel<<<gridDim, blockDim>>>(agGPU->wgts, agGPU->alpha, agGPU->lambda, agGPU->training_pieces, agGPU->seeds, g_p.num_agents);
+	replicate_kernel<<<gridDim, blockDim>>>(agGPU->wgts, agGPU->alpha, agGPU->lambda, agGPU->training_pieces, agGPU->seeds, g_p.num_agents, g_p.replicate_noise);
 	POST_KERNEL(replicate_kernel);
 
 //	device_dumpf("alpha, after replication", agGPU->alpha, g_p.num_agents, 1);
+
+	cudaThreadSynchronize();
+//	dump_agentsGPU("after replication", agGPU, 1, 0);
 	
 }
 
