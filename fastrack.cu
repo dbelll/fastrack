@@ -2565,7 +2565,7 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 	WON_LOSS *lastStandings = (WON_LOSS *)malloc(g_p.num_agents * sizeof(WON_LOSS));
 	WON_LOSS *lastVsChamp = (WON_LOSS *)malloc(g_p.num_agents * sizeof(WON_LOSS));
 	
-	float copyWgtsTimer = 0.0f, shareDeltaTimer = 0.0f, learnTimer = 0.0f, roundRobinTimer = 0.0f, competeTimer = 0.0f, standingsTimer = 0.0f;
+	float copyWgtsTimer = 0.0f, shareDeltaTimer = 0.0f, learnTimer = 0.0f, roundRobinTimer = 0.0f, competeTimer = 0.0f, standingsTimer = 0.0f, reduceTimer = 0.0f;
 	
 //	dim3 blockDim(g_p.board_size);
 //	dim3 gridDim(g_p.num_agents);
@@ -2620,10 +2620,10 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 			// this will replace the won-loss information from previous learning session
 			if (g_p.rr_games > 0){
 				do_round_robin(agGPU, &roundRobinTimer);
-				do_reduce_wl_for_round_robin(iSession, rGPU, agGPU, &roundRobinTimer);
+				do_reduce_wl_for_round_robin(iSession, rGPU, agGPU, &reduceTimer);
 			}else {
 				// reduce the won-loss results and store in rGPU->standings
-				do_reduce_wl_for_learning(iSession, rGPU, agGPU, &learnTimer);
+				do_reduce_wl_for_learning(iSession, rGPU, agGPU, &reduceTimer);
 			}
 		}
 
@@ -2665,7 +2665,7 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 	PRINT_TIME(copyWgtsTimer, "GPU copy wgts");
 	PRINT_TIME(learnTimer, "GPU learning");
 	PRINT_TIME(shareDeltaTimer, "GPU share delta");
-//	PRINT_TIME(reduceWonLossTimer, "GPU reduce won-loss for learning");
+	PRINT_TIME(reduceTimer, "GPU reduce won-loss results");
 	PRINT_TIME(roundRobinTimer, "GPU round robin");
 	PRINT_TIME(competeTimer, "GPU compete vs benchmark");
 	PRINT_TIME(standingsTimer, "GPU standings");
