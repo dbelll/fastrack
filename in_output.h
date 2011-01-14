@@ -246,6 +246,7 @@ AGENT *copy_agents_to_host(AGENT *agGPU)
 	agCPU->next_to_play = host_copyui(agGPU->next_to_play, g_p.num_agents);
 	agCPU->wgts = host_copyf(agGPU->wgts, g_p.num_agent_floats * g_p.num_agents);
 	agCPU->training_pieces = host_copyui(agGPU->training_pieces, g_p.num_agents);
+	agCPU->training_turns = host_copyui(agGPU->training_turns, g_p.num_agents);;
 	set_agent_float_pointers(agCPU);
 	
 	return agCPU;
