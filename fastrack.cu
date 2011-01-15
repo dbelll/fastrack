@@ -1942,6 +1942,23 @@ void update_opgrid(enum OPPONENT_METHODS method, WON_LOSS *lastStandings, unsign
 			}
 			break;
 			
+		case OM_FIXED3:	// compete against all agents, varying opponent within segments
+						// and across segments
+						// Number of different opponents = num_agents
+						// Example with num_agents = 8, num_opponents = 4
+						// eg:	seg1: 0 1 2 3
+						//		seg2: 4 5 6 7
+						//		seg3: 0 1 2 3
+						//		seg4: 4 5 6 7
+						//			... etc
+			printf("updating opponents: OM_FIXED2\n");
+			for (int iSeg = 0; iSeg < g_p.segs_per_session; iSeg++) {
+				for (int iOp = 0; iOp < g_p.num_opponents; iOp++) {
+					g_p.opgrid[iSeg * g_p.num_opponents + iOp] = (iSeg * g_p.num_opponents + iOp) % g_p.num_agents;
+				}
+			}
+			break;
+			
 		default:
 			printf("*** ERROR *** Unknown opponent selection method\n");
 			break;

@@ -186,6 +186,9 @@ PARAMS read_params(int argc, const char **argv)
 		case OM_DEBUG:
 			p.op_method = OM_DEBUG;
 			break;
+		case OM_FIXED3:
+			p.op_method = OM_FIXED3;
+			break;
 		default:
 			printf("*** ERROR *** Unknown (or un-implemented) opponent assignment method\n");
 			exit(-1);

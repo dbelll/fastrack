@@ -1,10 +1,7 @@
 Today's Goals
 
-	Write place in standings to file
-	
 	Vary episode length by agent
 	Experiment with frequency of replication
-	
 
 Questions:
 	Will replacing poor agents with copies of best agents help or hurt overall learning?
@@ -33,8 +30,6 @@ Fixes:
 	
 	Use twice as many threads in the learn kernel to speed up wgt copying.  The threads beyond
 	dc_board_size then do nothing during learning.
-	
-	Add an alternative benchmark of playing all the opponents (with learning off) - run this in parallel
 	
 	Create fixed baseline that shows good learning
 	
