@@ -5,8 +5,6 @@ Today's Goals
 	Vary episode length by agent
 	Experiment with frequency of replication
 	
-	Copy with noise
-	
 
 Questions:
 	Will replacing poor agents with copies of best agents help or hurt overall learning?
