@@ -19,7 +19,7 @@
 #$ -q gpubatch.q
 #
 ### request maximum of 30 minutes of compute time
-#$ -l h_rt=00:60:00
+#$ -l h_rt=00:30:00
 #
 
 #echo " ############### Script Started ############"
