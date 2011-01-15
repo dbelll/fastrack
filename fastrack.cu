@@ -1870,7 +1870,8 @@ void update_opgrid(enum OPPONENT_METHODS method, WON_LOSS *lastStandings, unsign
 			printf("updating opponents: OM_FIXED1\n");
 			for (int iSeg = 0; iSeg < g_p.segs_per_session; iSeg++) {
 				for (int iOp = 0; iOp < g_p.num_opponents; iOp++) {
-					g_p.opgrid[iSeg * g_p.num_opponents + iOp] = iOp;
+					g_p.opgrid[iSeg * g_p.num_opponents + iOp] = iOp % g_p.num_agents;
+//					g_p.opgrid[iSeg * g_p.num_opponents + iOp] = iOp;
 				}
 			}
 			break;
@@ -1935,9 +1936,9 @@ void update_opgrid(enum OPPONENT_METHODS method, WON_LOSS *lastStandings, unsign
 			for (int iSeg = 0; iSeg < g_p.segs_per_session; iSeg++) {
 				for (int iOp = 0; iOp < g_p.num_opponents; iOp++) {
 					if (0 == iSeg % 2)
-						g_p.opgrid[iSeg * g_p.num_opponents + iOp] = g_p.num_opponents - iOp - 1;
+						g_p.opgrid[iSeg * g_p.num_opponents + iOp] = g_p.num_opponents - (iOp % g_p.num_opponents) - 1;
 					else
-						g_p.opgrid[iSeg * g_p.num_opponents + iOp] = iOp;
+						g_p.opgrid[iSeg * g_p.num_opponents + iOp] = iOp % g_p.num_opponents;
 				}
 			}
 			break;
@@ -2353,7 +2354,8 @@ __global__ void old_learn_kernel(unsigned *seeds, float *wgts, float *e, float *
 //	copy_wgts_to_g(s_e, e + iAgent * dc_wgts_stride);			// for information only
 
 	// caclulate delta_wgts and store in global memory
-	calc_delta_wgts(s_wgts, saved_wgts + iAgent * dc_wgts_stride, delta_wgts + iAgent * dc_num_wgts * dc_num_opponents + iOpponent * dc_num_wgts);
+//	calc_delta_wgts(s_wgts, saved_wgts + iAgent * dc_wgts_stride, delta_wgts + iAgent * dc_num_wgts * dc_num_opponents + iOpponent * dc_num_wgts);
+	calc_delta_wgts(s_wgts, saved_wgts + iAgent * dc_wgts_stride, delta_wgts + iAgent * dc_num_wgts * dc_num_opponents + blockIdx.y * dc_num_wgts);
 
 	// accumulate the won/loss record in global memory 
 	if (wl) {
