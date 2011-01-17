@@ -319,19 +319,25 @@ void save_agentsGPU(AGENT *d_agGPU, RESULTS *rGPU, unsigned ii)
 	save_agent(filename_buffer, h_agGPU, lastStandings[0].agent);
 #endif
 #ifdef AGFILE_GPU1
-	printf("saving agent %d who came in 2nd ...\n", lastStandings[1].agent);
-	snprintf(filename_buffer, 4096, "%s%d.agent", AGFILE_GPU1, ii);
-	save_agent(filename_buffer, h_agGPU, lastStandings[1].agent);
+	if (g_p.num_agents > 1){
+		printf("saving agent %d who came in 2nd ...\n", lastStandings[1].agent);
+		snprintf(filename_buffer, 4096, "%s%d.agent", AGFILE_GPU1, ii);
+		save_agent(filename_buffer, h_agGPU, lastStandings[1].agent);
+	}
 #endif
 #ifdef AGFILE_GPU2
-	printf("saving agent %d who came in 3rd ...\n", lastStandings[2].agent);
-	snprintf(filename_buffer, 4096, "%s%d.agent", AGFILE_GPU2, ii);
-	save_agent(filename_buffer, h_agGPU, lastStandings[2].agent);
+	if (g_p.num_agents > 2) {
+		printf("saving agent %d who came in 3rd ...\n", lastStandings[2].agent);
+		snprintf(filename_buffer, 4096, "%s%d.agent", AGFILE_GPU2, ii);
+		save_agent(filename_buffer, h_agGPU, lastStandings[2].agent);
+	}
 #endif
 #ifdef AGFILE_GPU3
-	printf("saving agent %d who came in 4th ...\n", lastStandings[3].agent);
-	snprintf(filename_buffer, 4096, "%s%d.agent", AGFILE_GPU3, ii);
-	save_agent(filename_buffer, h_agGPU, lastStandings[3].agent);
+	if (g_p.num_agents > 3) {
+		printf("saving agent %d who came in 4th ...\n", lastStandings[3].agent);
+		snprintf(filename_buffer, 4096, "%s%d.agent", AGFILE_GPU3, ii);
+		save_agent(filename_buffer, h_agGPU, lastStandings[3].agent);
+	}
 #endif
 	
 	free(lastStandings);
@@ -352,13 +358,16 @@ void save_agentsCPU(AGENT *agCPU, RESULTS *resultsCPU)
 	save_agent(AGFILE_CPU0, agCPU, resultsCPU->standings[iWinner].agent);
 #endif
 #ifdef AGFILE_GPU1
-	save_agent(AGFILE_CPU1, agCPU, resultsCPU->standings[iWinner + 1].agent);
+	if (g_p.num_agents > 1)
+		save_agent(AGFILE_CPU1, agCPU, resultsCPU->standings[iWinner + 1].agent);
 #endif
 #ifdef AGFILE_GPU2
-	save_agent(AGFILE_CPU2, agCPU, resultsCPU->standings[iWinner + 2].agent);
+	if (g_p.num_agents > 2)
+		save_agent(AGFILE_CPU2, agCPU, resultsCPU->standings[iWinner + 2].agent);
 #endif
 #ifdef AGFILE_GPU3
-	save_agent(AGFILE_CPU3, agCPU, resultsCPU->standings[iWinner + 3].agent);
+	if (g_p.num_agents > 3)
+		save_agent(AGFILE_CPU3, agCPU, resultsCPU->standings[iWinner + 3].agent);
 #endif
 }
 
