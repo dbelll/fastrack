@@ -1988,9 +1988,9 @@ __global__ void replicate_kernel(float *wgts, float *alpha, float *lambda, unsig
 	
 	// next copy the parameters
 	if (idx == 0) {
-		alpha[iAgentTo] = alpha[iAgentFrom] * (0.75f + 0.50f * RandUniform(seeds + iAgentTo, stride));
+		alpha[iAgentTo] = alpha[iAgentFrom] * (0.8f + 0.2f * RandUniform(seeds + iAgentTo, stride));
 		if (alpha[iAgentTo] > 1.0f) alpha[iAgentTo] = 1.0f;
-		lambda[iAgentTo] = lambda[iAgentFrom] * (0.75f + 0.50f * RandUniform(seeds + iAgentTo, stride));
+		lambda[iAgentTo] = lambda[iAgentFrom] * (1.00f + 0.25f * RandUniform(seeds + iAgentTo, stride));
 		if (lambda[iAgentTo] > 1.0f) lambda[iAgentTo] = 1.0f;
 		training_pieces[iAgentTo] = training_pieces[iAgentFrom] - 1 + 3 * RandUniform(seeds + iAgentTo, stride);
 		if (training_pieces[iAgentTo] < 2) training_pieces[iAgentTo] = 2;
