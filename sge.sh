@@ -31,7 +31,7 @@
 . /etc/profile
 
 # These need to be the same as when the executable was compiled:
-module load  packages/cuda/2.3
+module load  packages/cuda/3.2
 module load compilers/gcc/4.3.3 
 
 

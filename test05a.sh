@@ -4,7 +4,7 @@
 #   two arguments are the number of replications and the replication noise
 #
 _location="./bin/linux/release"
-_setup="--SEED=1001 --BOARD_SIZE=5007 --NUM_PIECES=2 --MAX_TURNS=5"
+_setup="--SEED=1002 --BOARD_SIZE=5007 --NUM_PIECES=2 --MAX_TURNS=5"
 _ag1="--NUM_HIDDEN=4 --NUM_AGENTS=64 --NUM_OPPONENTS=32"
 _ag2="--MIN_PIECES=2 --MAX_PIECES=2"
 _learn="--NUM_SESSIONS=16000 --SEGS_PER_SESSION=1 --EPISODE_LENGTH=5"
