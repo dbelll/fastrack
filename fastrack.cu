@@ -1823,6 +1823,94 @@ __device__ void choose_moveGPU(unsigned *s_state, float *s_temp, float *s_wgts, 
 	val_for_stateGPU(s_wgts, s_state, s_hidden, s_out, s_temp, ps_terminal, ps_V);
 }
 
+// similar to choose_moveGPU, but selects the 2nd best move
+__device__ void choose_2nd_best_moveGPU(unsigned *s_state, float *s_temp, float *s_wgts, float *s_hidden, float *s_out, unsigned *ps_terminal, float *ps_V)
+{
+	unsigned idx = threadIdx.x;
+	
+	unsigned noVal = 1;
+	unsigned noSecondVal = 1;
+	float bestVal;
+	unsigned iBestFrom;
+	unsigned iBestTo;
+	float secondVal;
+	unsigned iSecondFrom;
+	unsigned iSecondTo;
+
+	// check for terminal condition
+	rewardGPU(s_state, (unsigned *)s_temp, ps_terminal, ps_V);
+	if (*ps_terminal) return;
+	
+	for (int iFrom = 0; iFrom < dc_board_size; iFrom++) {
+		if (X_BOARDGPU(s_state)[iFrom]) {
+			for (int m = 0; m < MAX_MOVES; m++) {
+
+#ifdef USE_TEXTURE_FOR_MOVES
+				int iTo = tex2D(texRef, iFrom, m);
+#else
+				int iTo = dc_moves[m * dc_board_size + iFrom];
+#endif
+
+				if (iTo >= 0 && !X_BOARDGPU(s_state)[iTo]){
+					// found a possible move, modify the board and calculate the value
+					unsigned oPiece;
+					if (idx == 0){
+						oPiece = O_BOARDGPU(s_state)[iTo];	// remember if there was an O piece here
+						X_BOARDGPU(s_state)[iFrom] = 0;
+						X_BOARDGPU(s_state)[iTo] = 1;
+						O_BOARDGPU(s_state)[iTo] = 0;
+					}
+					__syncthreads();
+					
+					val_for_stateGPU(s_wgts, s_state, s_hidden, s_out, s_temp, ps_terminal, ps_V);
+					
+					if (idx == 0) {
+						if (noVal){
+							// store this move as the best
+							iBestFrom = iFrom;
+							iBestTo = iTo;
+							bestVal = *ps_V;
+							noVal = 0;
+						}else if (*ps_V > bestVal) {
+							// transfer the stored best move to the 2nd best
+							iSecondFrom = iBestFrom;
+							iSecondTo = iBestTo;
+							secondVal = bestVal;
+							noSecondVal = 0;
+							// record this move as the best move and
+							iBestFrom = iFrom;
+							iBestTo = iTo;
+							bestVal = *ps_V;
+						} if (noSecondVal || *ps_V > secondVal){
+							// store this move as the second best
+							iSecondFrom = iFrom;
+							iSecondTo = iTo;
+							secondVal = *ps_V;
+							noSecondVal = 0;
+						}
+						// restore the state
+						X_BOARDGPU(s_state)[iFrom] = 1;
+						X_BOARDGPU(s_state)[iTo] = 0;
+						O_BOARDGPU(s_state)[iTo] = oPiece;
+					}
+					__syncthreads();
+				}
+			}
+		}
+	}
+	
+	// do the *second best* move
+	if (idx == 0) {
+		X_BOARDGPU(s_state)[iSecondFrom] = 0;
+		X_BOARDGPU(s_state)[iSecondTo] = 1;
+		O_BOARDGPU(s_state)[iSecondTo] = 0;
+	}
+	__syncthreads();
+	
+	// recalculate value to set the s_out and s_hidden activation values
+	val_for_stateGPU(s_wgts, s_state, s_hidden, s_out, s_temp, ps_terminal, ps_V);
+}
+
 
 /*
 	Player O makes a move based on the highest resulting board value from O's perspective.
@@ -2238,6 +2326,7 @@ __global__ void old_learn_kernel(unsigned *seeds, float *wgts, float *e, float *
 	__shared__ unsigned s_stats[3];		// games, wins, and losses
 	__shared__ unsigned s_tempui;
 	__shared__ float s_tempf;
+	__shared__ float s_epsilon;
 
 	// dynamic shared memory								------ size ------
 	extern __shared__ unsigned s_seeds[];					// 4 * dc_board_size
@@ -2255,6 +2344,7 @@ __global__ void old_learn_kernel(unsigned *seeds, float *wgts, float *e, float *
 		s_lambda = dc_ag.lambda[iAgent];
 		s_alpha = dc_ag.alpha[iAgent];
 		s_num_pieces = dc_ag.training_pieces[iAgent];
+		s_epsilon = dc_ag.epsilon[iAgent];
 	}
 	// reset the stats or copy from global memory so they can be updated
 	if (idx < 3) {
@@ -2296,7 +2386,13 @@ __global__ void old_learn_kernel(unsigned *seeds, float *wgts, float *e, float *
 	}
 	__syncthreads();
 	
-	choose_moveGPU(s_state, s_temp, s_wgts, s_hidden, s_out, &s_tempui, &s_V);
+	if (idx == 0) s_rand = RandUniform(s_seeds, dc_board_size);
+	__syncthreads();
+	if (s_rand < s_epsilon) choose_2nd_best_moveGPU(s_state, s_temp, s_wgts, s_hidden, s_out, &s_tempui, &s_V);
+	else choose_moveGPU(s_state, s_temp, s_wgts, s_hidden, s_out, &s_tempui, &s_V);
+
+//	choose_moveGPU(s_state, s_temp, s_wgts, s_hidden, s_out, &s_tempui, &s_V);
+
 	update_traceGPU(s_state, s_wgts, s_e, s_hidden, s_out, s_lambda, s_temp);
 	
 	while (total_turns++ < dc_episode_length) {
@@ -2325,8 +2421,13 @@ __global__ void old_learn_kernel(unsigned *seeds, float *wgts, float *e, float *
 				++turn;
 			}
 		}
-		
-		choose_moveGPU(s_state, s_temp, s_wgts, s_hidden, s_out, &s_tempui, &s_V_prime);
+
+		if (idx == 0) s_rand = RandUniform(s_seeds, dc_board_size);
+		__syncthreads();
+		if (s_rand < s_epsilon) choose_2nd_best_moveGPU(s_state, s_temp, s_wgts, s_hidden, s_out, &s_tempui, &s_V_prime);
+		else choose_moveGPU(s_state, s_temp, s_wgts, s_hidden, s_out, &s_tempui, &s_V_prime);
+
+//		choose_moveGPU(s_state, s_temp, s_wgts, s_hidden, s_out, &s_tempui, &s_V_prime);
 
 		if (idx == 0){
 			s_delta = s_reward + (s_terminal ? 0.0f : (dc_gamma * s_V_prime)) - s_V;
