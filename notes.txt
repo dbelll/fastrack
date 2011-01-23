@@ -1,19 +1,24 @@
+Optimize:
+	reduce number of arguments, used constant memory instead
+	Use more registers instead of shared memory?
+	Compact the memory for global weights
+	
+
+Organize
 Today's Goals
 
 	Vary episode length by agent
 	Experiment with frequency of replication
 
 Questions:
-	Will replacing poor agents with copies of best agents help or hurt overall learning?
 	Will modifying poor agents' parameters help or hurt
 	What is the best number of parallel opponents?
 
 To do list:
-	Finish varying training_pieces by agent and test the results
 	Add varying training_turns by agent
+	Finish varying training_pieces by agent and test the results
+	Add ability to load all initial agents from file
 	
-	Have agents copy the good agent's parameters if they are doing poorly
-
 Fixes:
 	Fix problem with num_pieces of 1 - must check for terminal condition after the first move.
 
@@ -46,8 +51,6 @@ Fixes:
 	
 	Compete against best agents from previous _2_ rounds
 	
-	Replicate the best agents with changes to alpha and/or lambda.
-
 	Modify the parameters for worst agents
 
 
