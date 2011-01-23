@@ -568,7 +568,7 @@ AGENT *init_agentsGPU(AGENT *agCPU)
 	// in a kernel with board_size threads per block to copy weights between global and local memory.
 	unsigned reps_for_wgts = 1 + (g_p.num_wgts - 1) / g_p.board_size;
 	printf("reps_for_wgts on GPU is %d\n", reps_for_wgts);
-	cudaMemcpyToSymbol("dc_reps_for_wgts", &reps_for_wgts, sizeof(unsigned));
+	CUDA_SAFE_CALL(cudaMemcpyToSymbol("dc_reps_for_wgts", &reps_for_wgts, sizeof(unsigned)));
 	
 	float piece_ratioX = (float)g_p.num_pieces / (float)g_p.board_size;
 	float piece_ratioO = (float)g_p.num_pieces / (float)(g_p.board_size - g_p.num_pieces);
@@ -2076,7 +2076,7 @@ __global__ void replicate_kernel(float *wgts, float *alpha, float *lambda, unsig
 	
 	// next copy the parameters
 	if (idx == 0) {
-		alpha[iAgentTo] = alpha[iAgentFrom] * (0.9f + 0.1f * RandUniform(seeds + iAgentTo, stride));
+		alpha[iAgentTo] = alpha[iAgentFrom] * (0.5f + 1.0f * RandUniform(seeds + iAgentTo, stride));
 		if (alpha[iAgentTo] > 1.0f) alpha[iAgentTo] = 1.0f;
 		lambda[iAgentTo] = lambda[iAgentFrom] * (.75f + 0.50f * RandUniform(seeds + iAgentTo, stride));
 		if (lambda[iAgentTo] > 1.0f) lambda[iAgentTo] = 1.0f;
@@ -2105,7 +2105,7 @@ __global__ void reduce_wl_kernel(WON_LOSS *wl, WON_LOSS *wl_tot, unsigned num_op
 	s_wins[idx] = wl[iAgent * num_ops + idx].wins;
 	s_losses[idx] = wl[iAgent * num_ops + idx].losses;
 	__syncthreads();
-	
+
 	// reduce the values in shared memory
 //	unsigned half = dc_half_opponents;
 	unsigned half = half_num_ops;
@@ -2123,7 +2123,7 @@ __global__ void reduce_wl_kernel(WON_LOSS *wl, WON_LOSS *wl_tot, unsigned num_op
 		}
 		__syncthreads();
 	}
-	
+
 	// copy the totals out to global memory
 	if (idx == 0){
 		wl_tot[iAgent].agent = iAgent;
@@ -2499,7 +2499,7 @@ void do_round_robin(AGENT *agGPU, float *timer)
 	dim3 blockDim(g_p.board_size);
 	dim3 gridDim(g_p.num_agents, g_p.num_agents);
 
-	PRE_KERNEL("compete kernel for round robin");
+	PRE_KERNEL("compete_kernel for round robin");
 	compete_kernel<<<gridDim, blockDim, dynamic_shared_mem()>>>(agGPU->seeds, agGPU->wgts, agGPU->wgts, agGPU->wl, 1);
 	POST_KERNEL(compete_kernel);
 	cudaThreadSynchronize();
@@ -2721,12 +2721,10 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 //		dim3 competeBlockDim(g_p.board_size);
 //		dim3 competeGridDim(g_p.num_agents, g_p.benchmark_ops);
 
-		// learn against other agents simultaneously for segs_per_session iterations, then
-		// share the delta-weights
+		// learn against other agents simultaneously for segs_per_session segments
 		for (int iSeg = 0; iSeg < g_p.segs_per_session; iSeg++) {
 
 			// copy current agent weights to the saved_wgts area
-//			if (0 == iSeg && 0 == ((1+iSession) % g_p.refresh_op_wgts_freq)) do_copy_wgts(agGPU, &copyWgtsTimer);
 			do_copy_wgts(agGPU, &copyWgtsTimer);
 
 			do_learning(iSeg, iSession, agGPU, &learnTimer);

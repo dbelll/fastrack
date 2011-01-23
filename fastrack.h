@@ -133,6 +133,8 @@ typedef struct {
 	unsigned min_pieces;		// minimum number of pieces for training
 	unsigned max_pieces;		// maximum number of pieces for training
 	unsigned max_turns;			// maximum turns per game
+	unsigned min_training_turns;	// minimum number of turns for training
+	unsigned max_training_turns;	// maximum number of turns for training
 	unsigned seed;				// seed value used to generate global seeds (which are then
 								// used to generate each agents seeds)
 	// agent parameters
@@ -213,7 +215,7 @@ typedef struct {
 	float epsilon;
 	float lambda;
 	unsigned training_pieces;
-//	unsigned training_turns;
+	unsigned training_turns;
 } WON_LOSS;
 
 // AGENT structure is used to consolidate the pointers to all agent data.  Pointers may be
