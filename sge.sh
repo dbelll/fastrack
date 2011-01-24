@@ -40,7 +40,7 @@ start=$(date)
 # Execute the job
 #
 
-./$1 $2 $3
+./$1 $2 $3 $4
 
 
 #
