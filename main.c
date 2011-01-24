@@ -88,6 +88,8 @@ void dump_params(PARAMS p)
 	printf("   min_alpha	    %7.4f\n", p.min_alpha);
 	printf("   max_alpha	    %7.4f\n", p.max_alpha);
 	printf("   epsilon          %7.4f\n", p.epsilon);
+	printf("   min_epsilon	    %7.4f\n", p.min_epsilon);
+	printf("   max_epsilon	    %7.4f\n", p.max_epsilon);
 	printf("   gamma            %7.4f\n", p.gamma);
 	printf("   lambda           %7.4f\n", p.lambda);
 	printf("   min_lambda       %7.4f\n", p.min_lambda);

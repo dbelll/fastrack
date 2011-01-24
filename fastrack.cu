@@ -2151,6 +2151,7 @@ __global__ void reduce_wl_kernel(WON_LOSS *wl, WON_LOSS *wl_tot, unsigned num_op
 	if (idx == 0){
 		wl_tot[iAgent].agent = iAgent;
 		wl_tot[iAgent].alpha = wl[iAgent * num_ops].alpha;
+		wl_tot[iAgent].epsilon = wl[iAgent * num_ops].epsilon;
 		wl_tot[iAgent].lambda = wl[iAgent * num_ops].lambda;
 		wl_tot[iAgent].training_pieces = wl[iAgent * num_ops].training_pieces;
 		wl_tot[iAgent].games = s_games[0];
