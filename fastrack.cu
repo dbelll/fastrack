@@ -398,6 +398,13 @@ void init_alpha(float *alpha, PARAMS *p)
 	}
 }
 
+void init_epsilon(float *epsilon, PARAMS *p)
+{
+	for (int iAg = 0; iAg < p->num_agents; iAg++) {
+		epsilon[iAg] = p->min_epsilon + RandUniform(g_seeds, 1)*(p->max_epsilon - p->min_epsilon);
+	}
+}
+
 void init_lambda(float *lambda, PARAMS *p)
 {
        for (int iAg = 0; iAg < p->num_agents; iAg++){
@@ -457,6 +464,7 @@ AGENT *init_agentsCPU(PARAMS p)
 	ag->training_turns = (unsigned *)malloc(p.num_agents * sizeof(unsigned));
 	init_training_pieces(ag->training_pieces, &p);
 	init_alpha(ag->alpha, &p);
+	init_epsilon(ag->epsilon, &p);
 	init_lambda(ag->lambda, &p);
 	return ag;
 }
