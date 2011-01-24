@@ -2105,6 +2105,7 @@ __global__ void replicate_kernel(float *wgts, float *alpha, float *lambda, float
 		if (epsilon[iAgentTo] > 1.0f) epsilon[iAgentTo] = 1.0f;
 		training_pieces[iAgentTo] = training_pieces[iAgentFrom] - 1 + 3 * RandUniform(seeds + iAgentTo, stride);
 		if (training_pieces[iAgentTo] < 2) training_pieces[iAgentTo] = 2;
+		if (training_pieces[iAgentTo] > 5) training_pieces[iAgentTo] = 5;
 	}
 }
 
@@ -2487,6 +2488,7 @@ __global__ void old_learn_kernel(unsigned *seeds, float *wgts, float *e, float *
 		if (idx == 0){
 			wl[iAgent*dc_num_opponents + blockIdx.y].agent = iAgent;
 			wl[iAgent*dc_num_opponents + blockIdx.y].alpha =  s_alpha;
+			wl[iAgent*dc_num_opponents + blockIdx.y].epsilon =  s_epsilon;
 			wl[iAgent*dc_num_opponents + blockIdx.y].lambda =  s_lambda;
 			wl[iAgent*dc_num_opponents + blockIdx.y].training_pieces =  s_num_pieces;
 //			wl[iAgent*dc_num_opponents + blockIdx.y].training_turns = s_num_turns;
