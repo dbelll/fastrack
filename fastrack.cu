@@ -2072,7 +2072,7 @@ __device__ float rand_mult(float w, unsigned iAgentTo, unsigned *seeds, unsigned
 }
 
 // replicate agents based on the map in dc_rep_map, copying the wgts and parameters
-__global__ void replicate_kernel(float *wgts, float *alpha, float *lambda, unsigned *training_pieces, unsigned *seeds, unsigned stride, float noise)
+__global__ void replicate_kernel(float *wgts, float *alpha, float *lambda, float *epsilon, unsigned *training_pieces, unsigned *seeds, unsigned stride, float noise)
 {
 	unsigned idx = threadIdx.x + blockIdx.x * blockDim.x;
 	unsigned iAgentFrom = dc_rep_map[blockIdx.y * 2];
@@ -2091,8 +2091,10 @@ __global__ void replicate_kernel(float *wgts, float *alpha, float *lambda, unsig
 		alpha[iAgentTo] = alpha[iAgentFrom] * rand_mult(1.0f, iAgentTo, seeds, stride);
 		if (alpha[iAgentTo] > 1.0f) alpha[iAgentTo] = 1.0f;
 //		lambda[iAgentTo] = lambda[iAgentFrom] * (.75f + 0.50f * RandUniform(seeds + iAgentTo, stride));
-		lambda[iAgentTo] = lambda[iAgentFrom] * rand_mult(.50f, iAgentTo, seeds, stride);
+		lambda[iAgentTo] = lambda[iAgentFrom] * rand_mult(1.0f, iAgentTo, seeds, stride);
 		if (lambda[iAgentTo] > 1.0f) lambda[iAgentTo] = 1.0f;
+		epsilon[iAgentTo] = epsilon[iAgentFrom] * rand_mult(1.0f, iAgentTo, seeds, stride);
+		if (epsilon[iAgentTo] > 1.0f) epsilon[iAgentTo] = 1.0f;
 		training_pieces[iAgentTo] = training_pieces[iAgentFrom] - 1 + 3 * RandUniform(seeds + iAgentTo, stride);
 		if (training_pieces[iAgentTo] < 2) training_pieces[iAgentTo] = 2;
 	}
@@ -2668,7 +2670,7 @@ void do_replication(AGENT *agGPU, WON_LOSS *lastStandings)
 	dim3 gridDim(1 + (g_p.wgts_stride-1)/g_p.num_agents, g_p.num_replicate);
 
 	PRE_KERNEL("replicate_kernel");
-	replicate_kernel<<<gridDim, blockDim>>>(agGPU->wgts, agGPU->alpha, agGPU->lambda, agGPU->training_pieces, agGPU->seeds, g_p.num_agents, g_p.replicate_noise);
+	replicate_kernel<<<gridDim, blockDim>>>(agGPU->wgts, agGPU->alpha, agGPU->lambda, agGPU->epsilon, agGPU->training_pieces, agGPU->seeds, g_p.num_agents, g_p.replicate_noise);
 	POST_KERNEL(replicate_kernel);
 
 //	device_dumpf("alpha, after replication", agGPU->alpha, g_p.num_agents, 1);
