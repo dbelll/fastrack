@@ -2308,6 +2308,7 @@ __global__ void compete_kernel(unsigned *seeds, float *wgts, float *opwgts, WON_
 		if (idx == 0){
 			wl[iAgent * (multiOp ? dc_num_agents : dc_benchmark_ops) + iOpponent].agent = iAgent;
 			wl[iAgent * (multiOp ? dc_num_agents : dc_benchmark_ops) + iOpponent].alpha = dc_ag.alpha[iAgent];
+			wl[iAgent * (multiOp ? dc_num_agents : dc_benchmark_ops) + iOpponent].epsilon = dc_ag.epsilon[iAgent];
 			wl[iAgent * (multiOp ? dc_num_agents : dc_benchmark_ops) + iOpponent].lambda = dc_ag.lambda[iAgent];
 			wl[iAgent * (multiOp ? dc_num_agents : dc_benchmark_ops) + iOpponent].training_pieces = dc_ag.training_pieces[iAgent];
 			wl[iAgent * (multiOp ? dc_num_agents : dc_benchmark_ops) + iOpponent].games = s_stats[0];
@@ -2485,14 +2486,16 @@ __global__ void old_learn_kernel(unsigned *seeds, float *wgts, float *e, float *
 
 	// accumulate the won/loss record in global memory 
 	if (wl) {
+	  /*
 		if (idx == 0){
 			wl[iAgent*dc_num_opponents + blockIdx.y].agent = iAgent;
-			wl[iAgent*dc_num_opponents + blockIdx.y].alpha =  s_alpha;
-			wl[iAgent*dc_num_opponents + blockIdx.y].epsilon =  s_epsilon;
-			wl[iAgent*dc_num_opponents + blockIdx.y].lambda =  s_lambda;
+			wl[iAgent*dc_num_opponents + blockIdx.y].alpha =  0.111f;//s_alpha;
+			wl[iAgent*dc_num_opponents + blockIdx.y].epsilon =  0.222f;//s_epsilon;
+			wl[iAgent*dc_num_opponents + blockIdx.y].lambda =  0.333f;//s_lambda;
 			wl[iAgent*dc_num_opponents + blockIdx.y].training_pieces =  s_num_pieces;
 //			wl[iAgent*dc_num_opponents + blockIdx.y].training_turns = s_num_turns;
 		}
+	  */
 		if (idx < 3){
 			*(1 + idx + (unsigned *)(wl + iAgent * dc_num_opponents + blockIdx.y)) = s_stats[idx];
 		}
@@ -2695,9 +2698,9 @@ RESULTS *runGPU(AGENT *agGPU, float *champ_wgts)
 {
 	printf("\n\n-----------------------------------------------------------\nrunning on GPU...\n");
 
-#ifdef DUMP_INITIAL_AGENTS
+	//#ifdef DUMP_INITIAL_AGENTS
 	dump_agentsGPU("initial agents on GPU", agGPU, 1, 0);
-#endif
+	//#endif
 
 //	device_dumpui("agent training_pieces (again):", agGPU->training_pieces, g_p.num_agents, 1);
 
