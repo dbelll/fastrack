@@ -2105,7 +2105,7 @@ __global__ void replicate_kernel(float *wgts, float *alpha, float *lambda, float
 		if (epsilon[iAgentTo] > 1.0f) epsilon[iAgentTo] = 1.0f;
 		training_pieces[iAgentTo] = training_pieces[iAgentFrom] - 1 + 3 * RandUniform(seeds + iAgentTo, stride);
 		if (training_pieces[iAgentTo] < 2) training_pieces[iAgentTo] = 2;
-		if (training_pieces[iAgentTo] > 5) training_pieces[iAgentTo] = 5;
+//		if (training_pieces[iAgentTo] > 5) training_pieces[iAgentTo] = 5;
 	}
 }
 
