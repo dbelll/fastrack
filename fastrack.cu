@@ -2060,6 +2060,17 @@ void update_opgrid(enum OPPONENT_METHODS method, WON_LOSS *lastStandings, unsign
 	dump_opponent_array();
 }
 
+__device__ float rand_mult(float w, unsigned iAgentTo, unsigned *seeds, unsigned stride)
+{
+	float r = RandUniform(seeds + iAgentTo, stride) - 0.5f;
+	if (r > 0.0f) {
+		r = 1.0f + w * r;
+	}else {
+		r = 1.0f / (1.0f + w * -r);
+	}
+	return r;
+}
+
 // replicate agents based on the map in dc_rep_map, copying the wgts and parameters
 __global__ void replicate_kernel(float *wgts, float *alpha, float *lambda, unsigned *training_pieces, unsigned *seeds, unsigned stride, float noise)
 {
@@ -2076,9 +2087,11 @@ __global__ void replicate_kernel(float *wgts, float *alpha, float *lambda, unsig
 	
 	// next copy the parameters
 	if (idx == 0) {
-		alpha[iAgentTo] = alpha[iAgentFrom] * (0.5f + 1.0f * RandUniform(seeds + iAgentTo, stride));
+//		alpha[iAgentTo] = alpha[iAgentFrom] * (0.5f + 1.0f * RandUniform(seeds + iAgentTo, stride));
+		alpha[iAgentTo] = alpha[iAgentFrom] * rand_mult(1.0f, iAgentTo, seeds, stride);
 		if (alpha[iAgentTo] > 1.0f) alpha[iAgentTo] = 1.0f;
-		lambda[iAgentTo] = lambda[iAgentFrom] * (.75f + 0.50f * RandUniform(seeds + iAgentTo, stride));
+//		lambda[iAgentTo] = lambda[iAgentFrom] * (.75f + 0.50f * RandUniform(seeds + iAgentTo, stride));
+		lambda[iAgentTo] = lambda[iAgentFrom] * rand_mult(.50f, iAgentTo, seeds, stride);
 		if (lambda[iAgentTo] > 1.0f) lambda[iAgentTo] = 1.0f;
 		training_pieces[iAgentTo] = training_pieces[iAgentFrom] - 1 + 3 * RandUniform(seeds + iAgentTo, stride);
 		if (training_pieces[iAgentTo] < 2) training_pieces[iAgentTo] = 2;

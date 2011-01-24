@@ -170,11 +170,11 @@ unsigned dumpResultsGPU(RESULTS *rGPU)
 
 // Print sorted standings using the WON_LOSS information in standings (from learning vs. peers),
 // and vsChamp (from competing against benchmark agent).
-void print_standings_aux(unsigned *training_pieces, float *alpha, float *lambda, WON_LOSS *standings, WON_LOSS *vsChamp)
+void print_standings_aux(unsigned *training_pieces, float *alpha, float *lambda, float *epsilon, WON_LOSS *standings, WON_LOSS *vsChamp)
 {
 	unsigned printBenchmark = 0 < vsChamp[0].games;
 	qsort(standings, g_p.num_agents, sizeof(WON_LOSS), wl_compare);
-	printf(    "                               G     W     L    PCT");
+	printf(    "                                     G     W     L    PCT");
 	if (printBenchmark) printf("    %4d games vs Champ\n", g_p.benchmark_games);
 	else printf("\n");
 	
@@ -185,13 +185,7 @@ void print_standings_aux(unsigned *training_pieces, float *alpha, float *lambda,
 		//			printf("agent%4d  %4d %4d %4d  %5.3f", standings[i].agent, standings[i].games, standings[i].wins, standings[i].losses, 0.5f * (1.0f + (float)(standings[i].wins - standings[i].losses) / (float)standings[i].games));
 		unsigned iAgent = standings[i].agent;
 
-//		printf("standings place %d is agent %d\n", i,iAgent);
-//		printf("   training_pieces %d\n", ag->training_pieces[iAgent]);
-//		printf("             games %d\n", standings[i].games);
-//		printf("               won %d\n", standings[i].wins);
-//		printf("              loss %d\n", standings[i].losses);
-
-		printf("agent%4d[p%2d a%4.2f l%4.2f] %6u %6u %6u  %5.3f", iAgent, training_pieces[iAgent], alpha[iAgent], lambda[iAgent], standings[i].games, standings[i].wins, standings[i].losses, winpct(standings[i]));
+		printf("agent%4d[p%2d a%4.2f l%4.2f e%4.2f] %6u %6u %6u  %5.3f", iAgent, training_pieces[iAgent], alpha[iAgent], lambda[iAgent], epsilon[iAgent], standings[i].games, standings[i].wins, standings[i].losses, winpct(standings[i]));
 		
 		totStand.games += standings[i].games;
 		totStand.wins += standings[i].wins;
@@ -204,7 +198,7 @@ void print_standings_aux(unsigned *training_pieces, float *alpha, float *lambda,
 			totChamp.losses += vsChamp[iAgent].losses;
 		}else printf("\n");
 	}
-	printf("                  avg     %7u%7u%7u  %5.3f ", totStand.games, totStand.wins, totStand.losses, winpct(totStand));
+	printf("                        avg     %7u%7u%7u  %5.3f ", totStand.games, totStand.wins, totStand.losses, winpct(totStand));
 	if (printBenchmark) printf("(%6.1f-%6.1f)   %+6.1f\n", (float)totChamp.wins / (float)g_p.num_agents, (float)totChamp.losses / (float)g_p.num_agents, (float)((int)totChamp.wins-(int)totChamp.losses) / (float)g_p.num_agents);
 	else printf("\n");
 }
@@ -214,7 +208,8 @@ void print_standingsGPU(AGENT *agGPU, WON_LOSS *standings, WON_LOSS *vsChamp)
 	unsigned *training_pieces = host_copyui(agGPU->training_pieces, g_p.num_agents);
 	float *alpha = host_copyf(agGPU->alpha, g_p.num_agents);
 	float *lambda = host_copyf(agGPU->lambda, g_p.num_agents);
-	print_standings_aux(training_pieces, alpha, lambda, standings, vsChamp);
+	float *epsilon = host_copyf(agGPU->epsilon, g_p.num_agents);
+	print_standings_aux(training_pieces, alpha, lambda, epsilon, standings, vsChamp);
 	free(training_pieces);
 	free(alpha);
 	free(lambda);
@@ -222,7 +217,7 @@ void print_standingsGPU(AGENT *agGPU, WON_LOSS *standings, WON_LOSS *vsChamp)
 
 void print_standingsCPU(AGENT *agCPU, WON_LOSS *standings, WON_LOSS *vsChamp)
 {
-	print_standings_aux(agCPU->training_pieces, agCPU->alpha, agCPU->lambda, standings, vsChamp);
+	print_standings_aux(agCPU->training_pieces, agCPU->alpha, agCPU->lambda, agCPU->epsilon, standings, vsChamp);
 }
 //void print_standingsGPU(WON_LOSS *standings, WON_LOSS *vsChamp)
 //{
