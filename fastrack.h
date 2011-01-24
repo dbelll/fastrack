@@ -147,6 +147,8 @@ typedef struct {
 	float min_alpha;
 	float max_alpha;
 	float epsilon;				// default exploration rate
+	float min_epsilon;
+	float max_epsilon;
 	float gamma;				// default discount rate
 	float lambda;				// default lambda
 	float min_lambda;

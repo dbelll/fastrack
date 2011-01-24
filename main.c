@@ -139,6 +139,8 @@ PARAMS read_params(int argc, const char **argv)
 	p.min_alpha = GET_PARAMF("MIN_ALPHA", p.alpha);
 	p.max_alpha = GET_PARAMF("MAX_ALPHA", p.alpha);
 	p.epsilon = GET_PARAMF("EPSILON", .10f);
+	p.min_epsilon = GET_PARAMF("MIN_EPSILON", p.epsilon);
+	p.max_epsilon = GET_PARAMF("MAX_EPSILON", p.epsilon);
 	p.gamma = GET_PARAMF("GAMMA", .95f);
 	p.lambda = GET_PARAMF("LAMBDA", .50f);
 	p.min_lambda = GET_PARAMF("MIN_LAMBDA", p.lambda);
