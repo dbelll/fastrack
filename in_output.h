@@ -24,10 +24,10 @@ void save_parameters(FILE *f)
 	fprintf(f, "NUM_SESSIONS, %d, SEGS_PER_SESSION, %d, NUM_REPLICATE, %d, REPLICATE_NOISE, %f\n", g_p.num_sessions, g_p.segs_per_session, g_p.num_replicate, g_p.replicate_noise);
 	fprintf(f, "EPISODE_LENGTH, %d\n", g_p.episode_length);
 	fprintf(f, "WARMUP_LENGTH, %d\n", g_p.warmup_length);
-	fprintf(f, "alpha, %9.6f\n", g_p.alpha);
-	fprintf(f, "epsilon, %9.6f\n", g_p.epsilon);
+	fprintf(f, "alpha, %9.6f, min_alpha, %9.6f, max_alpha, %9.6f\n", g_p.alpha, g_p.min_alpha, g_p.max_alpha);
+	fprintf(f, "epsilon, %9.6f, min_epsilon, %9.6f, max_epsilon, %9.6f\n", g_p.epsilon, g_p.min_epsilon, g_p.max_epsilon);
 	fprintf(f, "gamma, %9.6f\n", g_p.gamma);
-	fprintf(f, "lambda, %9.6f\n", g_p.lambda);
+	fprintf(f, "lambda, %9.6f, min_lambda, %9.6f, max_lambda, %9.6f\n", g_p.lambda, g_p.min_lambda, g_p.max_lambda);
 }
 
 // write agent weights to a file, including some game parameters
