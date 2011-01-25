@@ -2096,15 +2096,19 @@ __global__ void replicate_kernel(float *wgts, float *alpha, float *lambda, float
 	// next copy the parameters
 	if (idx == 0) {
 //		alpha[iAgentTo] = alpha[iAgentFrom] * (0.5f + 1.0f * RandUniform(seeds + iAgentTo, stride));
-		alpha[iAgentTo] = alpha[iAgentFrom] * rand_mult(1.0f, iAgentTo, seeds, stride);
-		if (alpha[iAgentTo] > 1.0f) alpha[iAgentTo] = 1.0f;
+	  alpha[iAgentTo] = alpha[iAgentFrom] * rand_mult(1.0f, iAgentTo, seeds, stride);
+		//	  alpha[iAgentTo] = .01f + .39f * RandUniform(seeds, stride);
+	  if (alpha[iAgentTo] > 1.0f) alpha[iAgentTo] = 1.0f;
 //		lambda[iAgentTo] = lambda[iAgentFrom] * (.75f + 0.50f * RandUniform(seeds + iAgentTo, stride));
-		lambda[iAgentTo] = lambda[iAgentFrom] * rand_mult(1.0f, iAgentTo, seeds, stride);
-		if (lambda[iAgentTo] > 1.0f) lambda[iAgentTo] = 1.0f;
-		epsilon[iAgentTo] = epsilon[iAgentFrom] * rand_mult(1.0f, iAgentTo, seeds, stride);
-		if (epsilon[iAgentTo] > 1.0f) epsilon[iAgentTo] = 1.0f;
-		training_pieces[iAgentTo] = training_pieces[iAgentFrom] - 1 + 3 * RandUniform(seeds + iAgentTo, stride);
-		if (training_pieces[iAgentTo] < 2) training_pieces[iAgentTo] = 2;
+	  lambda[iAgentTo] = lambda[iAgentFrom] * rand_mult(1.0f, iAgentTo, seeds, stride);
+	  if (lambda[iAgentTo] > 1.0f) lambda[iAgentTo] = 1.0f;
+		//lambda[iAgentTo] = 0.10f + .80f * RandUniform(seeds, stride);
+	  epsilon[iAgentTo] = epsilon[iAgentFrom] * rand_mult(1.0f, iAgentTo, seeds, stride);
+	  if (epsilon[iAgentTo] > 1.0f) epsilon[iAgentTo] = 1.0f;
+	  //epsilon[iAgentTo] = RandUniform(seeds, stride);
+	  training_pieces[iAgentTo] = training_pieces[iAgentFrom] - 1 + 3 * RandUniform(seeds + iAgentTo, stride);
+	  if (training_pieces[iAgentTo] < 2) training_pieces[iAgentTo] = 2;
+	  //training_pieces[iAgentTo] = 2 + 6.0f * RandUniform(seeds, stride);
 //		if (training_pieces[iAgentTo] > 5) training_pieces[iAgentTo] = 5;
 	}
 }
